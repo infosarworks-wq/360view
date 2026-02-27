@@ -1,0 +1,1372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>SAR Works | 3D Viewer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Lato:wght@300;400&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ─── RESET & BASE ─── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --red:      #CC0000;
+      --red-dark: #990000;
+      --black:    #0A0A0A;
+      --dark:     #141414;
+      --mid:      #1E1E1E;
+      --border:   #2C2C2C;
+      --text:     #E8E8E8;
+      --muted:    #888;
+      --white:    #FFFFFF;
+      --green-hot:#00C400;
+    }
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--black);
+      color: var(--text);
+      font-family: 'Lato', sans-serif;
+      font-weight: 300;
+      overflow: hidden;
+      touch-action: none;
+      user-select: none;
+    }
+
+    /* ─── LOADING SCREEN ─── */
+    #loading-screen {
+      position: fixed; inset: 0; z-index: 9999;
+      background: var(--black);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 24px;
+      transition: opacity 0.6s ease;
+    }
+    #loading-screen.fade-out { opacity: 0; pointer-events: none; }
+    .sar-logo-load {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 2.2rem; font-weight: 700;
+      letter-spacing: 0.3em;
+      color: var(--white);
+    }
+    .sar-logo-load span { color: var(--red); }
+    .load-bar-wrap {
+      width: 220px; height: 2px;
+      background: var(--border);
+      border-radius: 2px; overflow: hidden;
+    }
+    .load-bar {
+      height: 100%; width: 0%;
+      background: var(--red);
+      transition: width 0.3s ease;
+    }
+    .load-label {
+      font-size: 0.72rem; letter-spacing: 0.18em;
+      color: var(--muted); text-transform: uppercase;
+    }
+
+    /* ─── APP SHELL ─── */
+    #app {
+      width: 100vw; height: 100vh;
+      display: flex; flex-direction: column;
+      opacity: 0; transition: opacity 0.6s ease;
+    }
+    #app.visible { opacity: 1; }
+
+    /* ─── HEADER ─── */
+    #header {
+      height: 52px; min-height: 52px;
+      background: var(--dark);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center;
+      padding: 0 18px; gap: 16px;
+      z-index: 100;
+    }
+    .brand {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 1.1rem; font-weight: 700;
+      letter-spacing: 0.25em; color: var(--white);
+      white-space: nowrap;
+    }
+    .brand span { color: var(--red); }
+    .divider-v { width: 1px; height: 22px; background: var(--border); }
+    #project-label {
+      font-size: 0.75rem; letter-spacing: 0.14em;
+      color: var(--muted); text-transform: uppercase;
+    }
+
+    /* Floor selector */
+    .floor-tabs {
+      display: flex; gap: 4px; margin-left: auto;
+      overflow-x: auto; scrollbar-width: none;
+    }
+    .floor-tabs::-webkit-scrollbar { display: none; }
+    .floor-tab {
+      padding: 5px 14px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.78rem; font-weight: 600;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      background: transparent; color: var(--muted);
+      border: 1px solid var(--border); border-radius: 2px;
+      cursor: pointer; transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .floor-tab:hover { color: var(--text); border-color: var(--muted); }
+    .floor-tab.active { color: var(--white); border-color: var(--red); background: rgba(204,0,0,0.12); }
+
+    /* View mode toggle */
+    .view-toggle {
+      display: flex; border: 1px solid var(--border); border-radius: 2px; overflow: hidden;
+    }
+    .view-btn {
+      padding: 5px 12px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.75rem; font-weight: 600; letter-spacing: 0.1em;
+      background: transparent; color: var(--muted);
+      border: none; cursor: pointer; transition: all 0.2s;
+    }
+    .view-btn + .view-btn { border-left: 1px solid var(--border); }
+    .view-btn:hover { color: var(--text); }
+    .view-btn.active { background: var(--red); color: var(--white); }
+
+    /* ─── VIEWER AREA ─── */
+    #viewer-wrap {
+      flex: 1; position: relative; overflow: hidden;
+      background: var(--black);
+    }
+
+    /* Spin Viewer Canvas */
+    #spin-canvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      display: block; cursor: grab;
+    }
+    #spin-canvas:active { cursor: grabbing; }
+    #spin-canvas.zoomed { cursor: move; }
+
+    /* 360 Pano (Three.js) */
+    #pano-canvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      display: none;
+    }
+
+    /* ─── ZOOM CONTROLS ─── */
+    #zoom-controls {
+      position: absolute; bottom: 20px; right: 20px;
+      display: flex; flex-direction: column; gap: 4px;
+      z-index: 50;
+    }
+    .zoom-btn {
+      width: 36px; height: 36px;
+      background: rgba(20,20,20,0.9); border: 1px solid var(--border);
+      color: var(--text); font-size: 1.1rem;
+      border-radius: 2px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+    }
+    .zoom-btn:hover { border-color: var(--red); color: var(--red); }
+
+    /* ─── ROW INDICATOR ─── */
+    #row-indicator {
+      position: absolute; left: 20px; top: 50%;
+      transform: translateY(-50%);
+      display: flex; flex-direction: column; gap: 6px;
+      z-index: 50;
+    }
+    .row-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--border); cursor: pointer;
+      transition: all 0.2s;
+    }
+    .row-dot.active { background: var(--red); transform: scale(1.4); }
+
+    /* ─── INSTRUCTIONS TOOLTIP ─── */
+    #instructions {
+      position: absolute; bottom: 20px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; gap: 18px;
+      background: rgba(10,10,10,0.75);
+      border: 1px solid var(--border);
+      padding: 8px 18px; border-radius: 2px;
+      font-size: 0.68rem; letter-spacing: 0.1em;
+      color: var(--muted); text-transform: uppercase;
+      pointer-events: none; z-index: 50;
+      transition: opacity 1s ease;
+    }
+    #instructions.fade { opacity: 0; }
+    .instr-item { display: flex; align-items: center; gap: 6px; }
+    .instr-key {
+      background: var(--border); border-radius: 2px;
+      padding: 1px 5px; font-size: 0.65rem;
+    }
+
+    /* ─── VERSION SLIDER OVERLAY ─── */
+    #version-overlay {
+      position: absolute; inset: 0;
+      display: none; z-index: 60;
+      background: var(--black);
+    }
+    #version-overlay.active { display: flex; }
+    .version-pane {
+      flex: 1; position: relative; overflow: hidden;
+    }
+    .version-pane img {
+      width: 100%; height: 100%;
+      object-fit: contain;
+    }
+    .version-divider {
+      position: absolute; top: 0; width: 2px; height: 100%;
+      background: var(--red); z-index: 5; cursor: col-resize;
+    }
+    .version-label {
+      position: absolute; top: 12px; left: 12px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.85rem; letter-spacing: 0.15em;
+      color: var(--white); background: rgba(0,0,0,0.7);
+      padding: 4px 10px; border-radius: 2px;
+      text-transform: uppercase;
+    }
+    .version-arrow {
+      position: absolute; bottom: 20px;
+      background: rgba(20,20,20,0.9); border: 1px solid var(--border);
+      color: var(--text); padding: 6px 10px;
+      border-radius: 2px; cursor: pointer;
+      font-size: 0.9rem; z-index: 10;
+      transition: border-color 0.2s;
+    }
+    .version-arrow:hover { border-color: var(--red); }
+    .version-arrow.left { left: 50%; transform: translateX(calc(-100% - 4px)); }
+    .version-arrow.right { left: 50%; transform: translateX(4px); }
+    #close-version {
+      position: absolute; top: 12px; right: 12px;
+      background: rgba(20,20,20,0.9); border: 1px solid var(--border);
+      color: var(--text); padding: 6px 12px;
+      border-radius: 2px; cursor: pointer;
+      font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase;
+      z-index: 10; transition: border-color 0.2s;
+    }
+    #close-version:hover { border-color: var(--red); }
+
+    /* ─── ERROR / NOT FOUND ─── */
+    #error-screen {
+      position: absolute; inset: 0;
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center; gap: 12px;
+    }
+    #error-screen.visible { display: flex; }
+    .err-code {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 4rem; font-weight: 700; color: var(--border);
+    }
+    .err-msg {
+      font-size: 0.85rem; letter-spacing: 0.12em;
+      color: var(--muted); text-transform: uppercase;
+    }
+
+    /* ─── PANO CONTROLS ─── */
+    #pano-controls {
+      position: absolute; bottom: 20px; right: 20px;
+      display: none; flex-direction: column; gap: 4px; z-index: 50;
+    }
+    #pano-controls.active { display: flex; }
+    #back-to-floor {
+      padding: 7px 14px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.75rem; font-weight: 600; letter-spacing: 0.12em;
+      background: rgba(20,20,20,0.9); border: 1px solid var(--border);
+      color: var(--text); border-radius: 2px; cursor: pointer;
+      text-transform: uppercase; transition: all 0.2s;
+    }
+    #back-to-floor:hover { border-color: var(--red); color: var(--red); }
+
+    /* ─── ROOM LABEL ─── */
+    #room-label {
+      position: absolute; top: 12px; left: 50%;
+      transform: translateX(-50%);
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.82rem; font-weight: 600; letter-spacing: 0.2em;
+      color: var(--white); background: rgba(10,10,10,0.8);
+      border: 1px solid var(--border); border-top: 2px solid var(--red);
+      padding: 6px 16px; border-radius: 0 0 3px 3px;
+      text-transform: uppercase; z-index: 50;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════ LOADING SCREEN ══════════════ -->
+<div id="loading-screen">
+  <div class="sar-logo-load">S<span>A</span>R WORKS</div>
+  <div class="load-bar-wrap"><div class="load-bar" id="load-bar"></div></div>
+  <div class="load-label" id="load-label">Initialising engine…</div>
+</div>
+
+<!-- ══════════════ APP ══════════════ -->
+<div id="app">
+
+  <!-- Header -->
+  <div id="header">
+    <div class="brand">S<span>A</span>R WORKS</div>
+    <div class="divider-v"></div>
+    <div id="project-label">—</div>
+    <div class="floor-tabs" id="floor-tabs"></div>
+    <div class="view-toggle" id="view-toggle" style="display:none">
+      <button class="view-btn active" id="btn-aerial" onclick="App.setViewMode('aerial')">Aerial</button>
+      <button class="view-btn" id="btn-rooms" onclick="App.setViewMode('rooms')">Rooms</button>
+    </div>
+  </div>
+
+  <!-- Viewer -->
+  <div id="viewer-wrap">
+
+    <!-- Exterior Spin Canvas -->
+    <canvas id="spin-canvas"></canvas>
+
+    <!-- Three.js Pano Canvas -->
+    <div id="pano-canvas"></div>
+
+    <!-- Row indicator dots -->
+    <div id="row-indicator"></div>
+
+    <!-- Zoom controls (exterior only) -->
+    <div id="zoom-controls">
+      <button class="zoom-btn" onclick="SpinViewer.toggleZoom()" title="Toggle zoom (or double-click)">⊕</button>
+      <button class="zoom-btn" onclick="SpinViewer.resetZoom()" title="Reset">⊖</button>
+    </div>
+
+    <!-- Instructions hint -->
+    <div id="instructions">
+      <div class="instr-item"><span class="instr-key">drag ←→</span> rotate</div>
+      <div class="instr-item"><span class="instr-key">drag ↑↓</span> elevation</div>
+      <div class="instr-item"><span class="instr-key">dbl-click</span> zoom ×3</div>
+    </div>
+
+    <!-- Version comparison overlay -->
+    <div id="version-overlay">
+      <button id="close-version" onclick="VersionSlider.close()">✕ Close</button>
+    </div>
+
+    <!-- Pano back button -->
+    <div id="pano-controls">
+      <button id="back-to-floor" onclick="App.setViewMode('rooms')">← Floor Plan</button>
+    </div>
+
+    <!-- Room label -->
+    <div id="room-label" id="room-label"></div>
+
+    <!-- Error screen -->
+    <div id="error-screen">
+      <div class="err-code">404</div>
+      <div class="err-msg" id="error-msg">Resource not found</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Three.js from CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+"use strict";
+
+/* ══════════════════════════════════════════════════
+   ▌ CONFIGURATION — Edit these values for your project
+   ══════════════════════════════════════════════════ */
+const CONFIG = {
+  // ⚠ Replace with your actual Google Cloud Storage bucket name
+  BUCKET: 'archviz-viewer-images',
+
+  // Exterior spin settings
+  COLS: 24,          // images per 360° horizontal sweep
+  ROWS: 5,           // vertical elevation levels
+  TOTAL: 120,        // COLS × ROWS
+
+  // Interaction sensitivity (lower = slower / smoother)
+  SPIN_SENSITIVITY:  0.35,   // px per column step
+  ELEV_SENSITIVITY:  0.55,   // px per row step
+  ZOOM_LEVEL:        3,      // ×3 zoom on double-click
+
+  // Green hotspot detection thresholds (interior floor plan)
+  GREEN: { maxR: 45, minG: 80, maxB: 45 },
+
+  // Minimum pixel cluster size to count as a hotspot
+  MIN_HOTSPOT_AREA: 300,
+
+  // Preload first N images before showing viewer
+  PRELOAD_COUNT: 8,
+};
+
+/* ══════════════════════════════════════════════════
+   ▌ UTILITIES
+   ══════════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+
+function pad(n, len = 4) {
+  return String(n).padStart(len, '0');
+}
+
+function gcsUrl(path) {
+  return `https://storage.googleapis.com/${CONFIG.BUCKET}/${path}`;
+}
+
+function setLabel(text) {
+  $('load-label').textContent = text;
+}
+
+function setProgress(pct) {
+  $('load-bar').style.width = Math.min(100, pct) + '%';
+}
+
+function showError(msg) {
+  $('error-screen').classList.add('visible');
+  $('error-msg').textContent = msg;
+}
+
+/* ══════════════════════════════════════════════════
+   ▌ URL PARSER
+   Parse: ?project=sar0001 [&floor=floor+1] [&view=aerial|rooms] [&room=bedroom]
+   ══════════════════════════════════════════════════ */
+const URLParams = (() => {
+  const p = new URLSearchParams(window.location.search);
+  return {
+    project: p.get('project') || null,
+    floor:   p.get('floor')   || null,
+    view:    p.get('view')    || 'aerial',  // aerial | rooms
+    room:    p.get('room')    || null,
+  };
+})();
+
+/* ══════════════════════════════════════════════════
+   ▌ IMAGE CACHE
+   ══════════════════════════════════════════════════ */
+const ImageCache = (() => {
+  const cache = {};
+
+  function load(url) {
+    if (cache[url]) return cache[url];
+    const p = new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload  = () => resolve(img);
+      img.onerror = () => reject(new Error(`Failed: ${url}`));
+      img.src = url;
+    });
+    cache[url] = p;
+    return p;
+  }
+
+  async function preload(urls, onProgress) {
+    let done = 0;
+    const results = await Promise.allSettled(
+      urls.map(u => load(u).then(img => { done++; onProgress && onProgress(done / urls.length); return img; }))
+    );
+    return results.map(r => r.status === 'fulfilled' ? r.value : null);
+  }
+
+  return { load, preload };
+})();
+
+/* ══════════════════════════════════════════════════
+   ▌ SPIN VIEWER  (Exterior 360 spin — section 2.a-1)
+   ══════════════════════════════════════════════════ */
+const SpinViewer = (() => {
+  const canvas = $('spin-canvas');
+  const ctx    = canvas.getContext('2d');
+
+  let project, floor;
+  let col = 0;     // 0 → COLS-1
+  let row = 0;     // 0 → ROWS-1
+  let zoomed     = false;
+  let zoomX = 0, zoomY = 0;      // zoom pan offsets (normalised 0-1)
+  let panDX = 0, panDY = 0;      // pan deltas during zoom
+
+  // Drag state
+  let dragging   = false;
+  let lastX = 0, lastY = 0;
+  let dragAccX   = 0, dragAccY = 0;
+
+  // Image sets
+  let lowresImgs  = [];   // 120 imgs, null until loaded
+  let hiresImgs   = [];
+
+  function imgIndex(c, r) {
+    // row 0 = images 1-24, row 1 = 25-48, etc.
+    return r * CONFIG.COLS + c + 1;   // 1-indexed
+  }
+
+  function urlFor(c, r, hires = false) {
+    const n    = imgIndex(c, r);
+    const res  = hires ? 'hires' : 'lowres';
+    return gcsUrl(`${project}/${floor}/aerial/${res}/${pad(n)}.png`);
+  }
+
+  async function init(proj, flr) {
+    project = proj;
+    floor   = flr;
+    col = 0; row = 0;
+    zoomed = false;
+    lowresImgs = new Array(CONFIG.TOTAL).fill(null);
+    hiresImgs  = new Array(CONFIG.TOTAL).fill(null);
+
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Preload first row eagerly
+    const firstRowUrls = Array.from({length: CONFIG.COLS}, (_, i) => urlFor(i, 0, false));
+    setLabel('Loading exterior view…');
+
+    await ImageCache.preload(firstRowUrls.slice(0, CONFIG.PRELOAD_COUNT), p => setProgress(p * 60));
+
+    // Store all first-row images
+    for (let i = 0; i < CONFIG.COLS; i++) {
+      ImageCache.load(urlFor(i, 0, false)).then(img => {
+        lowresImgs[imgIndex(i, 0) - 1] = img;
+      }).catch(() => {});
+    }
+
+    // Background-load remaining rows
+    for (let r = 1; r < CONFIG.ROWS; r++) {
+      for (let c = 0; c < CONFIG.COLS; c++) {
+        ImageCache.load(urlFor(c, r, false)).then(img => {
+          lowresImgs[imgIndex(c, r) - 1] = img;
+        }).catch(() => {});
+      }
+    }
+
+    buildRowDots();
+    bindEvents();
+    render();
+  }
+
+  function buildRowDots() {
+    const el = $('row-indicator');
+    el.innerHTML = '';
+    for (let r = 0; r < CONFIG.ROWS; r++) {
+      const d = document.createElement('div');
+      d.className = 'row-dot' + (r === 0 ? ' active' : '');
+      d.title = `Elevation ${r + 1}`;
+      d.addEventListener('click', () => { row = r; updateRowDots(); render(); });
+      el.appendChild(d);
+    }
+  }
+
+  function updateRowDots() {
+    document.querySelectorAll('.row-dot').forEach((d, i) => {
+      d.classList.toggle('active', i === row);
+    });
+  }
+
+  function resize() {
+    canvas.width  = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+    render();
+  }
+
+  function getImg(c, r) {
+    const idx = imgIndex(c, r) - 1;
+    return lowresImgs[idx] || null;
+  }
+
+  function getHires(c, r) {
+    const idx = imgIndex(c, r) - 1;
+    return hiresImgs[idx] || null;
+  }
+
+  function render() {
+    if (!canvas.width) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const img = getImg(col, row);
+    if (!img) {
+      // Draw placeholder
+      ctx.fillStyle = '#141414';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#333';
+      ctx.font = '14px Lato';
+      ctx.textAlign = 'center';
+      ctx.fillText('Loading…', canvas.width / 2, canvas.height / 2);
+      return;
+    }
+
+    if (!zoomed) {
+      // Fit image to canvas
+      const scale = Math.min(canvas.width / img.naturalWidth, canvas.height / img.naturalHeight);
+      const w = img.naturalWidth  * scale;
+      const h = img.naturalHeight * scale;
+      const x = (canvas.width  - w) / 2;
+      const y = (canvas.height - h) / 2;
+      ctx.drawImage(img, x, y, w, h);
+    } else {
+      // Zoomed: load hi-res, pan around
+      const src = getHires(col, row) || img;
+      const scale = Math.min(canvas.width / src.naturalWidth, canvas.height / src.naturalHeight) * CONFIG.ZOOM_LEVEL;
+      const w = src.naturalWidth  * scale;
+      const h = src.naturalHeight * scale;
+
+      // Clamp pan
+      const maxPanX = Math.max(0, (w - canvas.width)  / 2);
+      const maxPanY = Math.max(0, (h - canvas.height) / 2);
+      panDX = Math.max(-maxPanX, Math.min(maxPanX, panDX));
+      panDY = Math.max(-maxPanY, Math.min(maxPanY, panDY));
+
+      const x = (canvas.width  - w) / 2 + panDX;
+      const y = (canvas.height - h) / 2 + panDY;
+      ctx.drawImage(src, x, y, w, h);
+    }
+  }
+
+  // ─ Events ─
+  function bindEvents() {
+    // Mouse
+    canvas.addEventListener('mousedown',  onDown);
+    canvas.addEventListener('mousemove',  onMove);
+    canvas.addEventListener('mouseup',    onUp);
+    canvas.addEventListener('mouseleave', onUp);
+    canvas.addEventListener('dblclick',   toggleZoom);
+
+    // Touch
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e.touches[0]); }, { passive: false });
+    canvas.addEventListener('touchmove',  e => { e.preventDefault(); onMove(e.touches[0]); }, { passive: false });
+    canvas.addEventListener('touchend',   e => { e.preventDefault(); onUp();               }, { passive: false });
+  }
+
+  function onDown(e) {
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    dragAccX = 0;
+    dragAccY = 0;
+  }
+
+  function onMove(e) {
+    if (!dragging) return;
+    const dx = e.clientX - lastX;
+    const dy = e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+
+    if (zoomed) {
+      // Pan the hi-res image
+      panDX += dx;
+      panDY += dy;
+      render();
+      return;
+    }
+
+    dragAccX += dx;
+    dragAccY += dy;
+
+    // Horizontal: step columns (wraps)
+    const colSteps = Math.trunc(dragAccX / (1 / CONFIG.SPIN_SENSITIVITY));
+    if (colSteps !== 0) {
+      col = ((col - colSteps) % CONFIG.COLS + CONFIG.COLS) % CONFIG.COLS;
+      dragAccX -= colSteps * (1 / CONFIG.SPIN_SENSITIVITY);
+    }
+
+    // Vertical: step rows (clamped — no wrap per spec)
+    const rowSteps = Math.trunc(dragAccY / (1 / CONFIG.ELEV_SENSITIVITY));
+    if (rowSteps !== 0) {
+      row = Math.max(0, Math.min(CONFIG.ROWS - 1, row + rowSteps));
+      dragAccY -= rowSteps * (1 / CONFIG.ELEV_SENSITIVITY);
+      updateRowDots();
+    }
+
+    render();
+  }
+
+  function onUp() {
+    dragging = false;
+  }
+
+  function toggleZoom() {
+    zoomed = !zoomed;
+    canvas.classList.toggle('zoomed', zoomed);
+    if (zoomed) {
+      panDX = 0; panDY = 0;
+      // Trigger hi-res load
+      const idx = imgIndex(col, row) - 1;
+      if (!hiresImgs[idx]) {
+        ImageCache.load(urlFor(col, row, true)).then(img => {
+          hiresImgs[idx] = img;
+          render();
+        }).catch(() => {});
+      }
+    }
+    render();
+  }
+
+  function resetZoom() {
+    zoomed = false;
+    panDX = 0; panDY = 0;
+    canvas.classList.remove('zoomed');
+    render();
+  }
+
+  function show() {
+    canvas.style.display = 'block';
+    $('zoom-controls').style.display = 'flex';
+    $('row-indicator').style.display = 'flex';
+  }
+
+  function hide() {
+    canvas.style.display = 'none';
+    $('zoom-controls').style.display = 'none';
+    $('row-indicator').style.display = 'none';
+  }
+
+  return { init, show, hide, toggleZoom, resetZoom, render };
+})();
+
+/* ══════════════════════════════════════════════════
+   ▌ GREEN CIRCLE DETECTOR  (canvas pixel analysis)
+   Finds hotspots painted in R0 G100 B0 in room images
+   Returns array of { cx, cy, relX, relY, number }
+   ══════════════════════════════════════════════════ */
+const GreenDetector = (() => {
+  const offscreen = document.createElement('canvas');
+  const octx      = offscreen.getContext('2d', { willReadFrequently: true });
+
+  function detect(img) {
+    const W = img.naturalWidth;
+    const H = img.naturalHeight;
+    offscreen.width  = W;
+    offscreen.height = H;
+    octx.drawImage(img, 0, 0);
+
+    const data = octx.getImageData(0, 0, W, H).data;
+    // Mark green pixels
+    const mask = new Uint8Array(W * H);
+
+    for (let i = 0; i < W * H; i++) {
+      const r = data[i * 4];
+      const g = data[i * 4 + 1];
+      const b = data[i * 4 + 2];
+      if (r <= CONFIG.GREEN.maxR && g >= CONFIG.GREEN.minG && b <= CONFIG.GREEN.maxB) {
+        mask[i] = 1;
+      }
+    }
+
+    // Connected-component labelling (simple flood fill)
+    const labels = new Int32Array(W * H);
+    let nextLabel = 1;
+    const components = {};
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const idx = y * W + x;
+        if (!mask[idx] || labels[idx]) continue;
+        // BFS
+        const stack = [idx];
+        labels[idx] = nextLabel;
+        const comp = { label: nextLabel, pixels: [], minX: x, maxX: x, minY: y, maxY: y };
+        while (stack.length) {
+          const cur = stack.pop();
+          const cy = Math.floor(cur / W);
+          const cx = cur % W;
+          comp.pixels.push(cur);
+          comp.minX = Math.min(comp.minX, cx); comp.maxX = Math.max(comp.maxX, cx);
+          comp.minY = Math.min(comp.minY, cy); comp.maxY = Math.max(comp.maxY, cy);
+          const neighbours = [cur - 1, cur + 1, cur - W, cur + W];
+          for (const n of neighbours) {
+            if (n >= 0 && n < W * H && mask[n] && !labels[n]) {
+              labels[n] = nextLabel;
+              stack.push(n);
+            }
+          }
+        }
+        components[nextLabel] = comp;
+        nextLabel++;
+      }
+    }
+
+    // Filter by minimum area & roughly circular shape
+    const hotspots = [];
+    for (const comp of Object.values(components)) {
+      if (comp.pixels.length < CONFIG.MIN_HOTSPOT_AREA) continue;
+      const bW = comp.maxX - comp.minX;
+      const bH = comp.maxY - comp.minY;
+      const aspect = bW / (bH || 1);
+      if (aspect < 0.4 || aspect > 2.5) continue; // filter non-circular blobs
+
+      const cx = Math.round((comp.minX + comp.maxX) / 2);
+      const cy = Math.round((comp.minY + comp.maxY) / 2);
+      const radius = Math.round(Math.max(bW, bH) / 2);
+
+      // Try to read the number inside the circle via pixel brightness scan
+      // Extract a slightly smaller area (number region in centre)
+      const crop = extractCropAsCanvas(img, cx, cy, radius);
+      const num  = readNumberFromCrop(crop);
+
+      hotspots.push({
+        cx, cy, radius,
+        relX: cx / W,
+        relY: cy / H,
+        number: num,
+        label: comp.label,
+      });
+    }
+
+    // Sort left-to-right, top-to-bottom
+    hotspots.sort((a, b) => a.cy !== b.cy ? a.cy - b.cy : a.cx - b.cx);
+
+    // If number detection failed, assign sequential
+    hotspots.forEach((h, i) => { if (!h.number) h.number = i + 1; });
+
+    return hotspots;
+  }
+
+  function extractCropAsCanvas(img, cx, cy, radius) {
+    const c2 = document.createElement('canvas');
+    const size = radius * 2;
+    c2.width = size; c2.height = size;
+    const c2ctx = c2.getContext('2d');
+    c2ctx.drawImage(img,
+      cx - radius, cy - radius, size, size,
+      0, 0, size, size
+    );
+    return c2;
+  }
+
+  // Simple heuristic: count dark pixels in centre region of crop
+  // (number text is white on green, so look for white cluster patterns)
+  // Returns a best-guess integer, or null if unclear
+  function readNumberFromCrop(cropCanvas) {
+    try {
+      const w = cropCanvas.width, h = cropCanvas.height;
+      const ctx2 = cropCanvas.getContext('2d', { willReadFrequently: true });
+      const d = ctx2.getImageData(Math.floor(w*0.2), Math.floor(h*0.2),
+                                   Math.floor(w*0.6), Math.floor(h*0.6)).data;
+      // Count bright pixels (white text in green circle)
+      let bright = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i] > 180 && d[i+1] > 180 && d[i+2] > 180) bright++;
+      }
+      // Very rough: more bright pixels = higher number (heuristic, fallback)
+      // Real OCR would require Tesseract.js — see note below
+      return null; // Return null; sequential labelling used as fallback
+    } catch { return null; }
+  }
+
+  return { detect };
+})();
+
+/* ══════════════════════════════════════════════════
+   ▌ PANORAMA VIEWER  (Interior 360 — section 2.a-2)
+   Uses Three.js equirectangular sphere projection
+   ══════════════════════════════════════════════════ */
+const PanoViewer = (() => {
+  let renderer, scene, camera, sphere;
+  let isRunning = false;
+  let dragging = false;
+  let lastX = 0, lastY = 0;
+  let lon = 0, lat = 0;
+
+  const container = $('pano-canvas');
+
+  function init() {
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    resize();
+    container.appendChild(renderer.domElement);
+
+    scene  = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(75, container.offsetWidth / container.offsetHeight, 0.1, 1000);
+    camera.position.set(0, 0, 0.001);
+
+    const geo = new THREE.SphereGeometry(500, 60, 40);
+    geo.scale(-1, 1, 1);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+    sphere = new THREE.Mesh(geo, mat);
+    scene.add(sphere);
+
+    window.addEventListener('resize', resize);
+    bindEvents();
+  }
+
+  function loadImage(url) {
+    if (!renderer) init();
+    return new Promise((resolve, reject) => {
+      new THREE.TextureLoader().load(
+        url,
+        tex => {
+          sphere.material = new THREE.MeshBasicMaterial({ map: tex });
+          sphere.material.needsUpdate = true;
+          resolve();
+        },
+        undefined,
+        reject
+      );
+    });
+  }
+
+  function bindEvents() {
+    const el = renderer.domElement;
+    el.addEventListener('mousedown',  e => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
+    el.addEventListener('mousemove',  e => {
+      if (!dragging) return;
+      lon -= (e.clientX - lastX) * 0.15;
+      lat += (e.clientY - lastY) * 0.15;
+      lat  = Math.max(-85, Math.min(85, lat));
+      lastX = e.clientX; lastY = e.clientY;
+    });
+    el.addEventListener('mouseup',   () => dragging = false);
+    el.addEventListener('mouseleave',() => dragging = false);
+
+    el.addEventListener('touchstart', e => {
+      dragging = true; lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+    }, { passive: true });
+    el.addEventListener('touchmove',  e => {
+      if (!dragging) return;
+      lon -= (e.touches[0].clientX - lastX) * 0.15;
+      lat += (e.touches[0].clientY - lastY) * 0.15;
+      lat  = Math.max(-85, Math.min(85, lat));
+      lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+    }, { passive: true });
+    el.addEventListener('touchend', () => dragging = false);
+  }
+
+  function resize() {
+    if (!renderer) return;
+    renderer.setSize(container.offsetWidth, container.offsetHeight);
+    if (camera) camera.aspect = container.offsetWidth / container.offsetHeight;
+    if (camera) camera.updateProjectionMatrix();
+  }
+
+  function animate() {
+    if (!isRunning) return;
+    requestAnimationFrame(animate);
+    const phi   = THREE.MathUtils.degToRad(90 - lat);
+    const theta = THREE.MathUtils.degToRad(lon);
+    camera.lookAt(
+      500 * Math.sin(phi) * Math.cos(theta),
+      500 * Math.cos(phi),
+      500 * Math.sin(phi) * Math.sin(theta)
+    );
+    renderer.render(scene, camera);
+  }
+
+  function show() {
+    if (!renderer) init();
+    container.style.display = 'block';
+    isRunning = true;
+    animate();
+  }
+
+  function hide() {
+    container.style.display = 'none';
+    isRunning = false;
+  }
+
+  return { show, hide, loadImage };
+})();
+
+/* ══════════════════════════════════════════════════
+   ▌ VERSION SLIDER  (Interior version comparison — section 2.a-2 cont.)
+   ══════════════════════════════════════════════════ */
+const VersionSlider = (() => {
+  const overlay = $('version-overlay');
+
+  function open(project, floor, roomNum, versionCount) {
+    overlay.innerHTML = '<button id="close-version" onclick="VersionSlider.close()">✕ Close</button>';
+    overlay.classList.add('active');
+
+    const numStr = pad(roomNum);
+
+    for (let v = 1; v <= versionCount; v++) {
+      const pane = document.createElement('div');
+      pane.className = 'version-pane';
+      pane.style.borderRight = v < versionCount ? '2px solid var(--red)' : '';
+
+      const label = document.createElement('div');
+      label.className = 'version-label';
+      label.textContent = `Version ${v}`;
+
+      const img = document.createElement('img');
+      img.crossOrigin = 'anonymous';
+      img.src = gcsUrl(`${project}/${floor}/rooms/version ${v}/${numStr}.png`);
+      img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
+      img.onerror = () => { img.style.display = 'none'; label.textContent += ' (unavailable)'; };
+
+      pane.appendChild(label);
+      pane.appendChild(img);
+      overlay.appendChild(pane);
+    }
+
+    // Navigation arrows at bottom
+    if (versionCount > 1) {
+      const leftArr  = document.createElement('button');
+      leftArr.className = 'version-arrow left';
+      leftArr.innerHTML = '&#9664;';
+      leftArr.title = 'Previous version';
+      const rightArr = document.createElement('button');
+      rightArr.className = 'version-arrow right';
+      rightArr.innerHTML = '&#9654;';
+      rightArr.title = 'Next version';
+      overlay.appendChild(leftArr);
+      overlay.appendChild(rightArr);
+    }
+  }
+
+  function close() {
+    overlay.classList.remove('active');
+    overlay.innerHTML = '<button id="close-version" onclick="VersionSlider.close()">✕ Close</button>';
+  }
+
+  return { open, close };
+})();
+
+/* ══════════════════════════════════════════════════
+   ▌ HOTSPOT OVERLAY
+   Renders SVG eye-icon hotspots over the pano canvas
+   ══════════════════════════════════════════════════ */
+const HotspotLayer = (() => {
+  let layer = null;
+
+  const EYE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+    <circle cx="50" cy="50" r="48" fill="#00C400"/>
+    <ellipse cx="50" cy="50" rx="30" ry="20" fill="white"/>
+    <circle cx="50" cy="50" r="12" fill="#00C400"/>
+    <circle cx="50" cy="50" r="7" fill="white"/>
+  </svg>`;
+
+  function attach(container, hotspots, onClickCb) {
+    if (layer) layer.remove();
+    layer = document.createElement('div');
+    layer.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:30;';
+
+    hotspots.forEach(h => {
+      const btn = document.createElement('button');
+      btn.style.cssText = `
+        position:absolute;
+        left:${(h.relX * 100).toFixed(2)}%;
+        top:${(h.relY * 100).toFixed(2)}%;
+        transform:translate(-50%,-50%);
+        width:${Math.max(32, h.radius * 2 * 0.06)}px;
+        height:${Math.max(32, h.radius * 2 * 0.06)}px;
+        background:none; border:none; cursor:pointer;
+        pointer-events:all;
+        transition: transform 0.2s;
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.6));
+      `;
+      btn.title   = `Room ${h.number}`;
+      btn.innerHTML = EYE_SVG;
+      btn.addEventListener('mouseenter', () => btn.style.transform = 'translate(-50%,-50%) scale(1.25)');
+      btn.addEventListener('mouseleave', () => btn.style.transform = 'translate(-50%,-50%) scale(1)');
+      btn.addEventListener('click', () => onClickCb(h));
+      layer.appendChild(btn);
+    });
+
+    container.appendChild(layer);
+  }
+
+  function remove() { if (layer) { layer.remove(); layer = null; } }
+
+  return { attach, remove };
+})();
+
+/* ══════════════════════════════════════════════════
+   ▌ MAIN APP CONTROLLER
+   ══════════════════════════════════════════════════ */
+const App = (() => {
+  let project, floors, currentFloor, viewMode;
+  let versionCount = 0;
+
+  /* ── Boot ── */
+  async function boot() {
+    const { project: proj, floor, view, room } = URLParams;
+
+    if (!proj) {
+      showError('No project specified. Add ?project=sar0001 to the URL.');
+      finishLoad();
+      return;
+    }
+
+    project = proj;
+    $('project-label').textContent = proj.toUpperCase();
+
+    // Discover floors by probing common index file, fall back to a manifest
+    floors = await discoverFloors(proj);
+
+    if (!floors.length) {
+      showError('No floors found for project ' + proj);
+      finishLoad();
+      return;
+    }
+
+    currentFloor = floor || floors[0];
+    buildFloorTabs();
+
+    viewMode = view;
+
+    if (view === 'rooms' && room) {
+      await loadRoomsView(room);
+    } else {
+      await loadAerialView();
+    }
+
+    finishLoad();
+
+    // Auto-hide instructions after 5s
+    setTimeout(() => $('instructions').classList.add('fade'), 5000);
+  }
+
+  /* ── Discover floors ──
+     Tries to fetch a manifest JSON at /{project}/manifest.json
+     Falls back to probing /floor 1/, /floor 2/, etc.
+  ─────────────────────── */
+  async function discoverFloors(proj) {
+    // 1) Try manifest
+    try {
+      const resp = await fetch(gcsUrl(`${proj}/manifest.json`));
+      if (resp.ok) {
+        const json = await resp.json();
+        if (Array.isArray(json.floors)) return json.floors;
+      }
+    } catch {}
+
+    // 2) Probe floor 1 … floor 5
+    const found = [];
+    for (let i = 1; i <= 5; i++) {
+      const probe = gcsUrl(`${proj}/floor ${i}/aerial/lowres/${pad(1)}.png`);
+      try {
+        await ImageCache.load(probe);
+        found.push(`floor ${i}`);
+      } catch {}
+    }
+
+    // 3) Probe common area names
+    const names = ['exterior', 'basement', 'ground floor', 'top deck', 'roof'];
+    for (const name of names) {
+      const probe = gcsUrl(`${proj}/${name}/aerial/lowres/${pad(1)}.png`);
+      try {
+        await ImageCache.load(probe);
+        if (!found.includes(name)) found.push(name);
+      } catch {}
+    }
+
+    return found.length ? found : [`floor 1`]; // optimistic fallback
+  }
+
+  /* ── Floor tabs ── */
+  function buildFloorTabs() {
+    const tabs = $('floor-tabs');
+    tabs.innerHTML = '';
+    floors.forEach(fl => {
+      const btn = document.createElement('button');
+      btn.className = 'floor-tab' + (fl === currentFloor ? ' active' : '');
+      btn.textContent = fl;
+      btn.addEventListener('click', () => switchFloor(fl));
+      tabs.appendChild(btn);
+    });
+  }
+
+  async function switchFloor(fl) {
+    currentFloor = fl;
+    document.querySelectorAll('.floor-tab').forEach(b => {
+      b.classList.toggle('active', b.textContent === fl);
+    });
+    if (viewMode === 'aerial') {
+      await loadAerialView();
+    } else {
+      await loadRoomsView(null);
+    }
+  }
+
+  /* ── View mode toggle ── */
+  async function setViewMode(mode) {
+    viewMode = mode;
+    $('btn-aerial').classList.toggle('active', mode === 'aerial');
+    $('btn-rooms') .classList.toggle('active', mode === 'rooms');
+    if (mode === 'aerial') {
+      await loadAerialView();
+    } else {
+      await loadRoomsView(null);
+    }
+  }
+
+  /* ── Aerial view ── */
+  async function loadAerialView() {
+    HotspotLayer.remove();
+    PanoViewer.hide();
+    $('pano-controls').classList.remove('active');
+    $('room-label').style.display = 'none';
+    $('view-toggle').style.display = 'flex';
+    $('instructions').style.cssText = '';
+    $('instructions').classList.remove('fade');
+
+    setLabel('Loading aerial view…');
+    await SpinViewer.init(project, currentFloor);
+    SpinViewer.show();
+    setProgress(100);
+  }
+
+  /* ── Rooms view (floor plan with hotspots) ── */
+  async function loadRoomsView(specificRoom) {
+    SpinViewer.hide();
+    $('view-toggle').style.display = 'flex';
+    $('instructions').style.display = 'none';
+
+    // Discover version count for the floor
+    versionCount = await probeVersions();
+
+    if (specificRoom) {
+      await openRoom(specificRoom);
+    } else {
+      // Load version 1 base image as floor plan
+      await loadFloorPlanWithHotspots();
+    }
+  }
+
+  async function loadFloorPlanWithHotspots() {
+    const url = gcsUrl(`${project}/${currentFloor}/rooms/version 1/${pad(1)}.png`);
+    setLabel('Loading floor plan…');
+
+    let img;
+    try {
+      img = await ImageCache.load(url);
+    } catch {
+      showError('Room not found');
+      return;
+    }
+
+    // Show image in pano container as floor plan
+    PanoViewer.hide();
+    const container = $('viewer-wrap');
+
+    // Remove old floor-plan img if any
+    const old = container.querySelector('.floor-plan-img');
+    if (old) old.remove();
+
+    const el = document.createElement('img');
+    el.className = 'floor-plan-img';
+    el.crossOrigin = 'anonymous';
+    el.src = url;
+    el.style.cssText = `
+      position:absolute; inset:0; width:100%; height:100%;
+      object-fit:contain; display:block;
+    `;
+    container.appendChild(el);
+
+    // Detect green hotspots
+    setLabel('Detecting room hotspots…');
+    const hotspots = GreenDetector.detect(img);
+
+    HotspotLayer.attach(container, hotspots, async (h) => {
+      await openRoom(h.number, h);
+    });
+
+    setProgress(100);
+  }
+
+  async function openRoom(roomNum, hotspot) {
+    // Remove floor plan overlay
+    const old = $('viewer-wrap').querySelector('.floor-plan-img');
+    if (old) old.remove();
+    HotspotLayer.remove();
+
+    setLabel(`Loading room ${roomNum}…`);
+
+    // If multiple versions exist, open comparison slider
+    if (versionCount > 1) {
+      VersionSlider.open(project, currentFloor, roomNum, versionCount);
+      return;
+    }
+
+    // Single version: load 360 panorama
+    const url = gcsUrl(`${project}/${currentFloor}/rooms/version 1/${pad(roomNum)}.png`);
+    try {
+      await PanoViewer.loadImage(url);
+    } catch {
+      showError(`Room ${roomNum} not found`);
+      return;
+    }
+
+    PanoViewer.show();
+    $('pano-controls').classList.add('active');
+    const label = $('room-label');
+    label.textContent = `Room ${roomNum}`;
+    label.style.display = 'block';
+  }
+
+  async function probeVersions() {
+    let count = 0;
+    for (let v = 1; v <= 10; v++) {
+      const url = gcsUrl(`${project}/${currentFloor}/rooms/version ${v}/${pad(1)}.png`);
+      try { await ImageCache.load(url); count = v; } catch { break; }
+    }
+    return count;
+  }
+
+  function finishLoad() {
+    setProgress(100);
+    const ls = $('loading-screen');
+    ls.classList.add('fade-out');
+    setTimeout(() => { ls.style.display = 'none'; }, 700);
+    $('app').classList.add('visible');
+  }
+
+  return { boot, setViewMode, switchFloor };
+})();
+
+/* ══════════════════════════════════════════════════
+   ▌ BOOT
+   ══════════════════════════════════════════════════ */
+window.addEventListener('DOMContentLoaded', () => {
+  App.boot().catch(err => {
+    console.error('[SAR Viewer]', err);
+    $('load-label').textContent = 'Error: ' + err.message;
+  });
+});
+</script>
+
+<!--
+  ════════════════════════════════════════════════
+   SAR WORKS 3D VIEWER — SETUP NOTES
+  ════════════════════════════════════════════════
+
+  1. SET YOUR BUCKET NAME
+     In the CONFIG block near the top of this file,
+     replace 'YOUR_GCS_BUCKET_NAME' with your actual
+     Google Cloud Storage bucket name.
+
+  2. URL STRUCTURE
+     https://infosarworks-wq.github.io/360view/?project=sar0001
+     https://infosarworks-wq.github.io/360view/?project=sar0001&floor=floor+2
+     https://infosarworks-wq.github.io/360view/?project=sar0001&view=rooms
+     https://infosarworks-wq.github.io/360view/?project=sar0001&view=rooms&room=3
+
+  3. GCS FOLDER STRUCTURE (must match exactly)
+     {bucket}/
+       {project}/             e.g. sar0001/
+         manifest.json        (optional — lists floor names)
+         {floor}/             e.g. floor 1/  OR  exterior/  OR  basement/
+           aerial/
+             lowres/          0001.png … 0120.png  (720p or 1080p)
+             hires/           0001.png … 0120.png  (4K, loaded on ×3 zoom)
+           rooms/
+             version 1/       0001.png … (equirectangular 360° images)
+             version 2/       (optional — triggers comparison slider)
+
+  4. MANIFEST.JSON (recommended)
+     Place at {bucket}/{project}/manifest.json:
+     { "floors": ["floor 1", "floor 2", "roof terrace"] }
+     Without it the engine probes common names automatically.
+
+  5. BUCKET CORS
+     In Google Cloud Console → Storage → {bucket} → Permissions,
+     ensure uniform public access is enabled AND add a CORS rule:
+     [{ "origin": ["*"], "method": ["GET"], "responseHeader": ["Content-Type"] }]
+
+  6. HOTSPOT DETECTION NOTE
+     Green circles (R≤45, G≥80, B≤45) are auto-detected via canvas
+     pixel analysis. For precise number reading from within the circle,
+     integrate Tesseract.js OCR by adding:
+       <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+     and updating the readNumberFromCrop() function in GreenDetector.
+
+  ════════════════════════════════════════════════
+-->
+</body>
+</html>
