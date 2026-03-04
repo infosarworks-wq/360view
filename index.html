@@ -98,21 +98,21 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 .map-hs{position:absolute;width:40px;height:40px;transform:translate(-50%,-50%);cursor:pointer;pointer-events:all;}
 .map-hs img,.map-hs svg{width:100%;height:100%;filter:drop-shadow(0 0 8px rgba(50,200,50,0.6));}
 
-/* MINI MAP — 16:9, 20% larger, 70% opacity, expand button corner */
-#mini-map{position:fixed;right:24px;bottom:24px;width:336px;height:189px;aspect-ratio:16/9;border:1px solid var(--border);background:rgba(10,10,10,0.92);opacity:0.7;display:none;z-index:220;overflow:hidden;}
+/* MINI MAP — 16:9, 30% larger than base, 75% opacity; hotspots layer above map, expand button on top */
+#mini-map{position:fixed;right:24px;bottom:24px;width:364px;height:205px;aspect-ratio:16/9;border:1px solid var(--border);background:rgba(10,10,10,0.92);opacity:0.75;display:none;z-index:220;overflow:hidden;}
 #mini-map.visible{display:block;}
 #mini-map-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;z-index:1;}
-#mini-map-hotspots{position:absolute;inset:0;z-index:2;pointer-events:none;}
-#mini-map-hotspots .mini-hs{pointer-events:all;}
-.mini-hs{position:absolute;width:24px;height:24px;transform:translate(-50%,-50%);cursor:pointer;}
-.mini-hs svg{width:100%;height:100%;filter:drop-shadow(0 0 6px rgba(50,200,50,0.7));display:block;}
-/* Full-screen map button: top-right corner of minimap */
-#mini-map-expand{position:absolute;top:6px;right:6px;width:32px;height:32px;z-index:230;border:none;background:rgba(0,0,0,0.6);border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--white);transition:background 0.2s;}
+#mini-map-hotspots{position:absolute;inset:0;z-index:10;pointer-events:none;visibility:visible;opacity:1;}
+#mini-map-hotspots .mini-hs{pointer-events:auto;}
+.mini-hs{position:absolute;width:26px;height:26px;transform:translate(-50%,-50%);cursor:pointer;z-index:2;}
+.mini-hs svg{width:100%;height:100%;filter:drop-shadow(0 0 6px rgba(50,200,50,0.8));display:block;}
+/* Rotation indicator: above map, below hotspots so hotspots stay clickable */
+#mini-map-fov{position:absolute;width:56px;height:56px;z-index:5;pointer-events:none;transform-origin:100% 50%;}
+#mini-map-fov svg{width:100%;height:100%;display:block;}
+/* Full-screen button: last in DOM + high z-index so it stays on top but doesn't block layer stacking */
+#mini-map-expand{position:absolute;top:6px;right:6px;width:32px;height:32px;z-index:20;border:none;background:rgba(0,0,0,0.6);border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--white);transition:background 0.2s;}
 #mini-map-expand:hover{background:rgba(0,0,0,0.85);}
 #mini-map-expand svg{width:18px;height:18px;}
-/* Rotation indicator: SVG wedge, light center, dark edges, middle-right at hotspot */
-#mini-map-fov{position:absolute;width:56px;height:56px;pointer-events:none;transform-origin:100% 50%;}
-#mini-map-fov svg{width:100%;height:100%;display:block;}
 
 /* INTERIOR */
 #interior-view{position:fixed;inset:0;display:none;}
@@ -215,11 +215,11 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
     <div id="map-hotspot-layer"></div>
   </div>
 
-  <!-- MINI MAP -->
+  <!-- MINI MAP: map image first (bottom), then fov, then hotspots (so they paint on top), then expand button -->
   <div id="mini-map">
     <img id="mini-map-img" src="" alt="">
-    <div id="mini-map-hotspots"></div>
     <div id="mini-map-fov"></div>
+    <div id="mini-map-hotspots"></div>
     <button type="button" id="mini-map-expand" title="View full map" aria-label="View full map" onclick="openRooms()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
     </button>
@@ -1144,10 +1144,16 @@ function renderMiniMapHotspots() {
   const natW = img.naturalWidth || rect.width;
   const natH = img.naturalHeight || rect.height;
   const rendered = containedImageRect(natW, natH, rect.width, rect.height);
+  const useNormalized = currentMeta.hotspots.every(h =>
+    typeof h.map_x === 'number' && h.map_x >= 0 && h.map_x <= 1 &&
+    typeof h.map_y === 'number' && h.map_y >= 0 && h.map_y <= 1
+  );
   currentMeta.hotspots.forEach(hs => {
     if (typeof hs.map_x !== 'number' || typeof hs.map_y !== 'number') return;
-    const px = (rendered.left + hs.map_x * (rendered.width / natW)) - wrapRect.left;
-    const py = (rendered.top  + hs.map_y * (rendered.height / natH)) - wrapRect.top;
+    const u = useNormalized ? hs.map_x : (hs.map_x / natW);
+    const v = useNormalized ? hs.map_y : (hs.map_y / natH);
+    const px = (rendered.left + u * rendered.width) - wrapRect.left;
+    const py = (rendered.top  + v * rendered.height) - wrapRect.top;
     const btn = document.createElement('div');
     btn.className = 'mini-hs';
     btn.style.left = px + 'px';
@@ -1173,10 +1179,11 @@ function updateMiniMapFov(forceTrueNorth) {
   const rendered = containedImageRect(natW, natH, rect.width, rect.height);
   const hs = currentHotspot;
   if (typeof hs.map_x !== 'number' || typeof hs.map_y !== 'number') return;
-  const pxView = rendered.left + hs.map_x * (rendered.width / natW);
-  const pyView = rendered.top  + hs.map_y * (rendered.height / natH);
-  const px = pxView - wrapRect.left;
-  const py = pyView - wrapRect.top;
+  const useNorm = (hs.map_x >= 0 && hs.map_x <= 1 && hs.map_y >= 0 && hs.map_y <= 1);
+  const u = useNorm ? hs.map_x : (hs.map_x / natW);
+  const v = useNorm ? hs.map_y : (hs.map_y / natH);
+  const px = (rendered.left + u * rendered.width) - wrapRect.left;
+  const py = (rendered.top  + v * rendered.height) - wrapRect.top;
   fov.style.left = px + 'px';
   fov.style.top  = py + 'px';
   const verData = hs.interior_images.find(v => v.version === currentVersion) || hs.interior_images[0];
