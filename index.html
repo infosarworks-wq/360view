@@ -68,8 +68,8 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 #hotspot-layer{position:absolute;inset:0;pointer-events:none;}
 .hs-btn{position:absolute;width:52px;height:52px;transform:translate(-50%,-50%);cursor:pointer;pointer-events:all;transition:transform 0.2s;border-radius:50%;overflow:hidden;background:none;}
 .hs-btn:hover{transform:translate(-50%,-50%) scale(1.2);}
-.hs-btn img{width:100%;height:100%;filter:drop-shadow(0 0 10px rgba(50,200,50,0.5));transition:filter 0.2s;}
-.hs-btn:hover img{filter:drop-shadow(0 0 18px rgba(50,220,50,0.9));}
+.hs-btn img,.hs-btn svg{width:100%;height:100%;filter:drop-shadow(0 0 10px rgba(50,200,50,0.5));transition:filter 0.2s;}
+.hs-btn:hover img,.hs-btn:hover svg{filter:drop-shadow(0 0 18px rgba(50,220,50,0.9));}
 .hs-tooltip{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:rgba(10,10,10,0.92);border:1px solid var(--border);color:var(--white);font-size:0.65rem;letter-spacing:0.15em;padding:4px 10px;white-space:nowrap;text-transform:uppercase;opacity:0;transition:opacity 0.2s;pointer-events:none;}
 .hs-btn:hover .hs-tooltip{opacity:1;}
 
@@ -94,18 +94,22 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 #map-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;}
 #map-hotspot-layer{position:absolute;inset:0;pointer-events:none;}
 .map-hs{position:absolute;width:40px;height:40px;transform:translate(-50%,-50%);cursor:pointer;pointer-events:all;}
-.map-hs img{width:100%;height:100%;filter:drop-shadow(0 0 8px rgba(50,200,50,0.6));}
+.map-hs img,.map-hs svg{width:100%;height:100%;filter:drop-shadow(0 0 8px rgba(50,200,50,0.6));}
 
-/* MINI MAP — 16:9, view frustum anchored at hotspot */
-#mini-map{position:fixed;right:24px;bottom:24px;width:280px;height:157.5px;aspect-ratio:16/9;border:1px solid var(--border);background:rgba(10,10,10,0.92);opacity:0.5;display:none;z-index:220;overflow:hidden;}
+/* MINI MAP — 16:9, 20% larger, 70% opacity, expand button corner */
+#mini-map{position:fixed;right:24px;bottom:24px;width:336px;height:189px;aspect-ratio:16/9;border:1px solid var(--border);background:rgba(10,10,10,0.92);opacity:0.7;display:none;z-index:220;overflow:hidden;}
 #mini-map.visible{display:block;}
 #mini-map img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;}
 #mini-map-hotspots{position:absolute;inset:0;pointer-events:none;}
 .mini-hs{position:absolute;width:18px;height:18px;transform:translate(-50%,-50%);cursor:pointer;pointer-events:all;}
-.mini-hs img{width:100%;height:100%;filter:drop-shadow(0 0 6px rgba(50,200,50,0.7));}
-/* Rotation indicator: Ray icon, middle-right locked to hotspot center, rotate for direction */
+.mini-hs svg{width:100%;height:100%;filter:drop-shadow(0 0 6px rgba(50,200,50,0.7));}
+/* Full-screen map button: top-right corner of minimap */
+#mini-map-expand{position:absolute;top:6px;right:6px;width:32px;height:32px;z-index:230;border:none;background:rgba(0,0,0,0.6);border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--white);transition:background 0.2s;}
+#mini-map-expand:hover{background:rgba(0,0,0,0.85);}
+#mini-map-expand svg{width:18px;height:18px;}
+/* Rotation indicator: SVG wedge, light center, dark edges, middle-right at hotspot */
 #mini-map-fov{position:absolute;width:56px;height:56px;pointer-events:none;transform-origin:100% 50%;}
-#mini-map-fov img{width:100%;height:100%;object-fit:contain;display:block;}
+#mini-map-fov svg{width:100%;height:100%;display:block;}
 
 /* INTERIOR */
 #interior-view{position:fixed;inset:0;display:none;}
@@ -210,7 +214,10 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
   <div id="mini-map">
     <img id="mini-map-img" src="" alt="">
     <div id="mini-map-hotspots"></div>
-    <div id="mini-map-fov"><img src="Ray icon1.png" alt=""></div>
+    <div id="mini-map-fov"></div>
+    <button type="button" id="mini-map-expand" title="View full map" aria-label="View full map" onclick="openRooms()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+    </button>
   </div>
 
   <!-- LOGO OVERLAY -->
@@ -230,14 +237,46 @@ const COLS = 24;
 const ROWS = 5;
 const TOTAL_IMAGES = 120;
 
-// Hotspot icon: use uploaded EYE icon image
-const EYE_ICON_SRC = 'EYE icon.png';
+// Hotspot icon: green circle with white dot in the middle (inline SVG)
 function createEyeIcon() {
-  const icon = document.createElement('img');
-  icon.src = EYE_ICON_SRC;
-  icon.alt = '';
-  icon.setAttribute('aria-hidden', 'true');
-  return icon;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', '24');
+  svg.setAttribute('height', '24');
+  svg.setAttribute('aria-hidden', 'true');
+  const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  circle.setAttribute('cx', '12');
+  circle.setAttribute('cy', '12');
+  circle.setAttribute('r', '11');
+  circle.setAttribute('fill', '#22a522');
+  circle.setAttribute('stroke', 'rgba(0,0,0,0.2)');
+  circle.setAttribute('stroke-width', '1');
+  svg.appendChild(circle);
+  const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  dot.setAttribute('cx', '12');
+  dot.setAttribute('cy', '12');
+  dot.setAttribute('r', '3');
+  dot.setAttribute('fill', 'white');
+  svg.appendChild(dot);
+  return svg;
+}
+
+// Rotation indicator: SVG wedge — light center, darker edges (viewer angle)
+function createFovRaySvg() {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 56 56');
+  svg.setAttribute('width', '56');
+  svg.setAttribute('height', '56');
+  // Wedge: anchor at middle-right (56,28). Shape = triangle pointing left, ~90° fan
+  // Path: right-center (56,28) -> top-left -> bottom-left -> back to (56,28)
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', 'M 56 28 L 8 4 L 8 52 Z');
+  path.setAttribute('fill', 'rgba(180,220,255,0.5)');
+  path.setAttribute('stroke', 'rgba(60,120,200,0.95)');
+  path.setAttribute('stroke-width', '2');
+  path.setAttribute('stroke-linejoin', 'round');
+  svg.appendChild(path);
+  return svg;
 }
 
 // Embedded assets
@@ -1003,6 +1042,7 @@ function updateMiniMapFov(forceTrueNorth) {
   const wrap = document.getElementById('mini-map');
   const img = document.getElementById('mini-map-img');
   const fov = document.getElementById('mini-map-fov');
+  if (!fov.querySelector('svg')) fov.appendChild(createFovRaySvg());
   const rect = img.getBoundingClientRect();
   const wrapRect = wrap.getBoundingClientRect();
   const natW = img.naturalWidth || rect.width;
