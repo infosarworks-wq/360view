@@ -632,6 +632,9 @@ function containedImageRect(natW, natH, dispW, dispH) {
 // Re-render hotspots when window resizes
 window.addEventListener('resize', () => {
   if (zoomLevel <= 1) renderHotspots(currentImg);
+  if (document.getElementById('mini-map').classList.contains('visible')) {
+    renderMiniMapHotspots();
+  }
 });
 
 // ============================================================
@@ -1109,10 +1112,24 @@ function renderMapHotspotsFull() {
   const natW = img.naturalWidth || rect.width;
   const natH = img.naturalHeight || rect.height;
   const rendered = containedImageRect(natW, natH, rect.width, rect.height);
-  currentMeta.hotspots.forEach(hs => {
-    if (typeof hs.map_x !== 'number' || typeof hs.map_y !== 'number') return;
-    const px = rendered.left + hs.map_x * (rendered.width / natW);
-    const py = rendered.top  + hs.map_y * (rendered.height / natH);
+  currentMeta.hotspots.forEach((hs, index) => {
+    const { x: mx, y: my } = getMapCoords(hs);
+    let px, py;
+    if (!Number.isNaN(mx) && !Number.isNaN(my)) {
+      const useNorm = (mx >= 0 && mx <= 1 && my >= 0 && my <= 1);
+      const u = useNorm ? mx : (mx / natW);
+      const v = useNorm ? my : (my / natH);
+      px = rendered.left + u * rendered.width;
+      py = rendered.top  + v * rendered.height;
+    } else {
+      const cols = Math.max(1, Math.min(4, currentMeta.hotspots.length));
+      const row = Math.floor(index / cols);
+      const col = index % cols;
+      const rw = img.getBoundingClientRect().width || 800;
+      const rh = img.getBoundingClientRect().height || 500;
+      px = 40 + col * (rw / (cols + 1));
+      py = 40 + row * 50;
+    }
     const btn = document.createElement('div');
     btn.className = 'map-hs';
     btn.style.left = px + 'px';
@@ -1128,9 +1145,20 @@ function showMiniMap() {
   if (!currentMeta || !currentMeta.map_image_path) return;
   const wrap = document.getElementById('mini-map');
   const img = document.getElementById('mini-map-img');
-  img.src = bucketUrl(currentMeta.map_image_path || `${projectName}/${currentFloor}/map.jpg`);
-  img.onload = () => renderMiniMapHotspots();
   wrap.classList.add('visible');
+  img.src = bucketUrl(currentMeta.map_image_path || `${projectName}/${currentFloor}/map.jpg`);
+  img.onload = () => {
+    renderMiniMapHotspots();
+    requestAnimationFrame(() => requestAnimationFrame(renderMiniMapHotspots));
+  };
+}
+
+function getMapCoords(hs) {
+  const x = hs.map_x ?? hs.mapX ?? hs.x;
+  const y = hs.map_y ?? hs.mapY ?? hs.y;
+  const nx = typeof x === 'number' ? x : (typeof x === 'string' ? parseFloat(x) : NaN);
+  const ny = typeof y === 'number' ? y : (typeof y === 'string' ? parseFloat(y) : NaN);
+  return { x: nx, y: ny };
 }
 
 function renderMiniMapHotspots() {
@@ -1139,27 +1167,33 @@ function renderMiniMapHotspots() {
   const layer = document.getElementById('mini-map-hotspots');
   layer.innerHTML = '';
   if (!currentMeta || !currentMeta.hotspots) return;
-  const rect = img.getBoundingClientRect();
-  const wrapRect = wrap.getBoundingClientRect();
-  const natW = img.naturalWidth || rect.width;
-  const natH = img.naturalHeight || rect.height;
-  const rendered = containedImageRect(natW, natH, rect.width, rect.height);
-  const useNormalized = currentMeta.hotspots.every(h =>
-    typeof h.map_x === 'number' && h.map_x >= 0 && h.map_x <= 1 &&
-    typeof h.map_y === 'number' && h.map_y >= 0 && h.map_y <= 1
-  );
-  currentMeta.hotspots.forEach(hs => {
-    if (typeof hs.map_x !== 'number' || typeof hs.map_y !== 'number') return;
-    const u = useNormalized ? hs.map_x : (hs.map_x / natW);
-    const v = useNormalized ? hs.map_y : (hs.map_y / natH);
-    const px = (rendered.left + u * rendered.width) - wrapRect.left;
-    const py = (rendered.top  + v * rendered.height) - wrapRect.top;
+  const natW = img.naturalWidth || 1;
+  const natH = img.naturalHeight || 1;
+  const wrapW = wrap.offsetWidth || 364;
+  const wrapH = wrap.offsetHeight || 205;
+  const rendered = containedImageRect(natW, natH, wrapW, wrapH);
+  currentMeta.hotspots.forEach((hs, index) => {
+    const { x: mx, y: my } = getMapCoords(hs);
+    let px, py;
+    if (!Number.isNaN(mx) && !Number.isNaN(my)) {
+      const useNormalized = (mx >= 0 && mx <= 1 && my >= 0 && my <= 1);
+      const u = useNormalized ? mx : (mx / natW);
+      const v = useNormalized ? my : (my / natH);
+      px = rendered.left + u * rendered.width;
+      py = rendered.top  + v * rendered.height;
+    } else {
+      const cols = Math.max(1, Math.min(4, currentMeta.hotspots.length));
+      const row = Math.floor(index / cols);
+      const col = index % cols;
+      px = 24 + col * (wrapW / (cols + 1));
+      py = 24 + row * 40;
+    }
     const btn = document.createElement('div');
     btn.className = 'mini-hs';
     btn.style.left = px + 'px';
     btn.style.top  = py + 'px';
     btn.appendChild(createEyeIcon());
-    btn.setAttribute('aria-label', hs.room_name);
+    btn.setAttribute('aria-label', hs.room_name || 'Room');
     btn.addEventListener('click', () => enterRoom(hs, true));
     layer.appendChild(btn);
   });
@@ -1172,18 +1206,19 @@ function updateMiniMapFov(forceTrueNorth) {
   const img = document.getElementById('mini-map-img');
   const fov = document.getElementById('mini-map-fov');
   if (!fov.querySelector('svg')) fov.appendChild(createFovRaySvg());
-  const rect = img.getBoundingClientRect();
-  const wrapRect = wrap.getBoundingClientRect();
-  const natW = img.naturalWidth || rect.width;
-  const natH = img.naturalHeight || rect.height;
-  const rendered = containedImageRect(natW, natH, rect.width, rect.height);
+  const natW = img.naturalWidth || 1;
+  const natH = img.naturalHeight || 1;
+  const wrapW = wrap.offsetWidth || 364;
+  const wrapH = wrap.offsetHeight || 205;
+  const rendered = containedImageRect(natW, natH, wrapW, wrapH);
   const hs = currentHotspot;
-  if (typeof hs.map_x !== 'number' || typeof hs.map_y !== 'number') return;
-  const useNorm = (hs.map_x >= 0 && hs.map_x <= 1 && hs.map_y >= 0 && hs.map_y <= 1);
-  const u = useNorm ? hs.map_x : (hs.map_x / natW);
-  const v = useNorm ? hs.map_y : (hs.map_y / natH);
-  const px = (rendered.left + u * rendered.width) - wrapRect.left;
-  const py = (rendered.top  + v * rendered.height) - wrapRect.top;
+  const { x: mx, y: my } = getMapCoords(hs);
+  if (Number.isNaN(mx) || Number.isNaN(my)) return;
+  const useNorm = (mx >= 0 && mx <= 1 && my >= 0 && my <= 1);
+  const u = useNorm ? mx : (mx / natW);
+  const v = useNorm ? my : (my / natH);
+  const px = rendered.left + u * rendered.width;
+  const py = rendered.top  + v * rendered.height;
   fov.style.left = px + 'px';
   fov.style.top  = py + 'px';
   const verData = hs.interior_images.find(v => v.version === currentVersion) || hs.interior_images[0];
