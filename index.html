@@ -1226,8 +1226,8 @@ function updateMiniMapFov(forceTrueNorth) {
     ? forceTrueNorth
     : (verData && typeof verData.true_north_degrees === 'number' ? verData.true_north_degrees : 0);
   const mapNorth = currentMeta && typeof currentMeta.map_north_degrees === 'number' ? currentMeta.map_north_degrees : 0;
-  /* Look direction on map (0°=north/up, 90°=east). Ray SVG at 0° points left; up = -90° in CSS. */
-  const angle = normAngle((mapNorth + headingOffset) - 90);
+  /* Look direction on map (0°=north/up, 90°=east). Ray SVG at 0° points left; up = -90° in CSS. +180° to flip ray to match view. */
+  const angle = normAngle((mapNorth + headingOffset) - 90 + 180);
   /* Middle-right of Ray icon at (px, py), then rotate */
   fov.style.transform = `translate(-100%, -50%) rotate(${angle}deg)`;
 }
