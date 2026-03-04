@@ -103,8 +103,9 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 #mini-map-hotspots{position:absolute;inset:0;pointer-events:none;}
 .mini-hs{position:absolute;width:18px;height:18px;transform:translate(-50%,-50%);cursor:pointer;pointer-events:all;}
 .mini-hs img{width:100%;height:100%;filter:drop-shadow(0 0 6px rgba(50,200,50,0.7));}
-/* Blue triangular view frustum: center on hotspot, points in view direction */
-#mini-map-fov{position:absolute;width:72px;height:72px;pointer-events:none;transform-origin:50% 50%;background:rgba(100,180,255,0.35);clip-path:polygon(50% 50%, 0% 0%, 100% 0%);}
+/* Rotation indicator: Ray icon, middle-right locked to hotspot center, rotate for direction */
+#mini-map-fov{position:absolute;width:56px;height:56px;pointer-events:none;transform-origin:100% 50%;}
+#mini-map-fov img{width:100%;height:100%;object-fit:contain;display:block;}
 
 /* INTERIOR */
 #interior-view{position:fixed;inset:0;display:none;}
@@ -209,7 +210,7 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
   <div id="mini-map">
     <img id="mini-map-img" src="" alt="">
     <div id="mini-map-hotspots"></div>
-    <div id="mini-map-fov"></div>
+    <div id="mini-map-fov"><img src="Ray icon1.png" alt=""></div>
   </div>
 
   <!-- LOGO OVERLAY -->
@@ -229,33 +230,14 @@ const COLS = 24;
 const ROWS = 5;
 const TOTAL_IMAGES = 120;
 
-// Hotspot icon: inline SVG (green circle + white eye) so no 404 if image missing
-function createEyeIconSvg() {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('width', '24');
-  svg.setAttribute('height', '24');
-  svg.setAttribute('aria-hidden', 'true');
-  const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-  circle.setAttribute('cx', '12');
-  circle.setAttribute('cy', '12');
-  circle.setAttribute('r', '12');
-  circle.setAttribute('fill', '#22a522');
-  svg.appendChild(circle);
-  const eye = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
-  eye.setAttribute('cx', '12');
-  eye.setAttribute('cy', '12');
-  eye.setAttribute('rx', '6');
-  eye.setAttribute('ry', '4');
-  eye.setAttribute('fill', 'white');
-  svg.appendChild(eye);
-  const pupil = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-  pupil.setAttribute('cx', '12');
-  pupil.setAttribute('cy', '12');
-  pupil.setAttribute('r', '2');
-  pupil.setAttribute('fill', 'white');
-  svg.appendChild(pupil);
-  return svg;
+// Hotspot icon: use uploaded EYE icon image
+const EYE_ICON_SRC = 'EYE icon.png';
+function createEyeIcon() {
+  const icon = document.createElement('img');
+  icon.src = EYE_ICON_SRC;
+  icon.alt = '';
+  icon.setAttribute('aria-hidden', 'true');
+  return icon;
 }
 
 // Embedded assets
@@ -557,7 +539,7 @@ function renderHotspots(imgIdx) {
     btn.style.left = px + 'px';
     btn.style.top  = py + 'px';
 
-    btn.appendChild(createEyeIconSvg());
+    btn.appendChild(createEyeIcon());
     btn.setAttribute('aria-label', hs.room_name);
 
     const tip = document.createElement('div');
@@ -973,7 +955,7 @@ function renderMapHotspotsFull() {
     btn.className = 'map-hs';
     btn.style.left = px + 'px';
     btn.style.top  = py + 'px';
-    btn.appendChild(createEyeIconSvg());
+    btn.appendChild(createEyeIcon());
     btn.setAttribute('aria-label', hs.room_name);
     btn.addEventListener('click', () => enterRoom(hs, false));
     layer.appendChild(btn);
@@ -1008,7 +990,7 @@ function renderMiniMapHotspots() {
     btn.className = 'mini-hs';
     btn.style.left = px + 'px';
     btn.style.top  = py + 'px';
-    btn.appendChild(createEyeIconSvg());
+    btn.appendChild(createEyeIcon());
     btn.setAttribute('aria-label', hs.room_name);
     btn.addEventListener('click', () => enterRoom(hs, true));
     layer.appendChild(btn);
@@ -1040,7 +1022,8 @@ function updateMiniMapFov(forceTrueNorth) {
     : (verData && typeof verData.true_north_degrees === 'number' ? verData.true_north_degrees : 0);
   const mapNorth = currentMeta && typeof currentMeta.map_north_degrees === 'number' ? currentMeta.map_north_degrees : 0;
   const angle = normAngle(mapNorth + headingOffset);
-  fov.style.transform = `translate(-50%,-50%) rotate(${angle}deg)`;
+  /* Middle-right of Ray icon at (px, py), then rotate */
+  fov.style.transform = `translate(-100%, -50%) rotate(${angle}deg)`;
 }
 
 </script>
