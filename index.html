@@ -138,7 +138,7 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 <!-- ERROR -->
 <div id="error-screen">
   <div class="error-title">Project Not Found</div>
-  <div class="error-sub">No project matches the provided URL parameter</div>
+  <div class="error-sub">Add ?project=your_project_name to the URL</div>
 </div>
 
 <!-- APP -->
@@ -269,17 +269,17 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('logo-img').src = LOGO_SRC;
 
   const params = new URLSearchParams(window.location.search);
-  projectName = params.get('project') || '';
+  projectName = (params.get('project') || '').trim();
 
-  if (!projectName) { showError(); return; }
+  if (!projectName) { showError('missing'); return; }
 
   document.getElementById('project-label').textContent = projectName.replace(/_/g,' ');
 
   setLoader(10, 'Locating project');
 
-  // Try to load floor1_metadata.json
+  // Try to load floor1_metadata.json (bucket must allow CORS for this origin or use *)
   const ok = await loadFloorMeta('floor1');
-  if (!ok) { showError(); return; }
+  if (!ok) { showError('load', bucketUrl(`${projectName}/floor1_metadata.json`)); return; }
 
   setLoader(60, 'Loading imagery');
   await discoverFloors();
@@ -300,9 +300,16 @@ window.addEventListener('DOMContentLoaded', async () => {
   }, 5000);
 });
 
-function showError() {
+function showError(reason, attemptedUrl) {
   document.getElementById('loading-screen').classList.add('hidden');
-  document.getElementById('error-screen').classList.add('visible');
+  const errEl = document.getElementById('error-screen');
+  const subEl = errEl.querySelector('.error-sub');
+  if (subEl) {
+    if (reason === 'missing') subEl.textContent = 'Add ?project=your_project_name to the URL (e.g. .../360view/?project=villa_01)';
+    else if (reason === 'load') subEl.innerHTML = 'Could not load project data. Upload the exported floor JSON to your bucket and ensure CORS allows this site.<br><small style="opacity:0.8;margin-top:8px;display:block">Tried: ' + (attemptedUrl || '') + '</small>';
+    else subEl.textContent = 'No project matches the provided URL parameter';
+  }
+  errEl.classList.add('visible');
 }
 
 // ============================================================
