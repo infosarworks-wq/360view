@@ -279,7 +279,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // Try to load floor1_metadata.json (bucket must allow CORS for this origin or use *)
   const ok = await loadFloorMeta('floor1');
-  if (!ok) { showError('load', bucketUrl(`${projectName}/floor1_metadata.json`)); return; }
+  if (!ok) { showError('load', bucketUrl(`${projectName}/floor1/floor1_metadata.json`)); return; }
 
   setLoader(60, 'Loading imagery');
   await discoverFloors();
@@ -316,7 +316,7 @@ function showError(reason, attemptedUrl) {
 // FLOOR DISCOVERY
 // ============================================================
 async function loadFloorMeta(floorKey) {
-  const url = bucketUrl(`${projectName}/${floorKey}_metadata.json`);
+  const url = bucketUrl(`${projectName}/${floorKey}/${floorKey}_metadata.json`);
   try {
     const r = await fetch(url);
     if (!r.ok) return false;
