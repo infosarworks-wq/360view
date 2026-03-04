@@ -38,8 +38,8 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 
 /* TOPBAR */
 #topbar{position:fixed;top:0;left:0;right:0;height:60px;background:linear-gradient(180deg,rgba(10,10,10,0.97) 0%,transparent 100%);display:flex;align-items:center;padding:0 28px;z-index:100;gap:16px;}
-.brand{font-family:var(--font-d);font-size:1.15rem;font-weight:400;letter-spacing:0.3em;color:var(--gold);flex:1;}
-.brand span{color:var(--muted);font-weight:300;font-size:0.9rem;}
+.brand{flex:1;display:flex;align-items:center;}
+.brand img{height:32px;object-fit:contain;}
 .project-name-display{font-size:0.7rem;letter-spacing:0.2em;color:var(--muted);text-transform:uppercase;}
 
 #floor-selector{display:none;align-items:center;gap:10px;}
@@ -66,17 +66,16 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 #aerial-img.pan-mode{object-fit:none;cursor:move;transition:none;}
 
 #hotspot-layer{position:absolute;inset:0;pointer-events:none;}
-.hs-btn{position:absolute;width:52px;height:52px;transform:translate(-50%,-50%);cursor:pointer;pointer-events:all;transition:transform 0.2s;}
+.hs-btn{position:absolute;width:52px;height:52px;transform:translate(-50%,-50%);cursor:pointer;pointer-events:all;transition:transform 0.2s;border-radius:50%;overflow:hidden;background:none;}
 .hs-btn:hover{transform:translate(-50%,-50%) scale(1.2);}
 .hs-btn img{width:100%;height:100%;filter:drop-shadow(0 0 10px rgba(50,200,50,0.5));transition:filter 0.2s;}
 .hs-btn:hover img{filter:drop-shadow(0 0 18px rgba(50,220,50,0.9));}
 .hs-tooltip{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:rgba(10,10,10,0.92);border:1px solid var(--border);color:var(--white);font-size:0.65rem;letter-spacing:0.15em;padding:4px 10px;white-space:nowrap;text-transform:uppercase;opacity:0;transition:opacity 0.2s;pointer-events:none;}
 .hs-btn:hover .hs-tooltip{opacity:1;}
 
-/* Row dots */
-#row-dots{position:fixed;right:22px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:10px;z-index:50;}
-.rdot{width:6px;height:6px;border-radius:50%;background:var(--border);cursor:pointer;transition:background 0.2s,transform 0.2s;}
-.rdot.active{background:var(--gold);transform:scale(1.5);}
+/* Row dots (disabled) */
+#row-dots{display:none;}
+.rdot{display:none;}
 
 /* Zoom indicator */
 #zoom-bar{position:fixed;top:68px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:16px;z-index:80;}
@@ -168,7 +167,7 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 
   <!-- TOPBAR -->
   <div id="topbar">
-    <div class="brand">SAR <span>WORKS</span></div>
+    <div class="brand"><img id="brand-logo" alt="SAR Works"></div>
     <div class="project-name-display" id="project-label"></div>
     <div id="floor-selector">
       <label>Floor</label>
@@ -306,6 +305,8 @@ function fadeTransition(cb) {
 window.addEventListener('DOMContentLoaded', async () => {
   // Set logo
   document.getElementById('logo-img').src = LOGO_SRC;
+  const brand = document.getElementById('brand-logo');
+  if (brand) brand.src = LOGO_SRC;
 
   const params = new URLSearchParams(window.location.search);
   projectName = (params.get('project') || '').trim();
@@ -703,7 +704,6 @@ function enterRoom(hotspot, preserveHeading) {
     buildVersionTabs(hotspot);
     loadVersion(hotspot, 1, preserveHeading === true);
     showMiniMap();
-    startGazeMonitor();
   });
 }
 
@@ -773,7 +773,7 @@ function loadVersion(hotspot, vNum, preserveHeading) {
         type:  'info',
         text:  targetHs.room_name,
         clickHandlerFunc: (evt, args) => {
-          enterRoom(targetHs);
+          enterRoom(targetHs, true);
         },
         cssClass: 'nav-arrow-hs',
         createTooltipFunc: createNavArrow,
