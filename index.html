@@ -506,7 +506,9 @@ function renderHotspots(imgIdx) {
   const rendered = containedImageRect(natW, natH, bRect.width, bRect.height);
 
   currentMeta.hotspots.forEach(hs => {
-    const pos = hs.positions.find(p => p.exterior_image === imgIdx && p.detected);
+    const positions = Array.isArray(hs.positions) ? hs.positions : [];
+    if (!positions.length) return;
+    const pos = positions.find(p => p.exterior_image === imgIdx && p.detected);
     if (!pos) return;
 
     const btn = document.createElement('div');
