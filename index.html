@@ -99,12 +99,12 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 /* MINI MAP — 16:9, view frustum anchored at hotspot */
 #mini-map{position:fixed;right:24px;bottom:24px;width:280px;height:157.5px;aspect-ratio:16/9;border:1px solid var(--border);background:rgba(10,10,10,0.92);opacity:0.5;display:none;z-index:220;overflow:hidden;}
 #mini-map.visible{display:block;}
-#mini-map img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+#mini-map img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;}
 #mini-map-hotspots{position:absolute;inset:0;pointer-events:none;}
 .mini-hs{position:absolute;width:18px;height:18px;transform:translate(-50%,-50%);cursor:pointer;pointer-events:all;}
 .mini-hs img{width:100%;height:100%;filter:drop-shadow(0 0 6px rgba(50,200,50,0.7));}
-/* Blue triangular view frustum: apex at hotspot, points in view direction */
-#mini-map-fov{position:absolute;width:56px;height:42px;pointer-events:none;transform-origin:50% 100%;background:rgba(100,180,255,0.35);clip-path:polygon(50% 100%, 0% 0%, 100% 0%);}
+/* Blue triangular view frustum: center on hotspot, points in view direction */
+#mini-map-fov{position:absolute;width:72px;height:72px;pointer-events:none;transform-origin:50% 50%;background:rgba(100,180,255,0.35);clip-path:polygon(50% 50%, 0% 0%, 100% 0%);}
 
 /* INTERIOR */
 #interior-view{position:fixed;inset:0;display:none;}
@@ -182,7 +182,7 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 
   <!-- AERIAL VIEW -->
   <div id="aerial-view">
-    <img id="aerial-img" src="" alt="">
+    <img id="aerial-img" src="" alt="" draggable="false">
     <div id="hotspot-layer"></div>
     <div id="row-dots"></div>
     <div id="zoom-bar">
@@ -560,7 +560,7 @@ window.addEventListener('resize', () => {
 const aerialEl = document.getElementById('aerial-view');
 
 aerialEl.addEventListener('mousedown', onDragStart);
-aerialEl.addEventListener('touchstart', e => onDragStart(e.touches[0]), {passive:true});
+aerialEl.addEventListener('touchstart', e => { e.preventDefault(); onDragStart(e.touches[0]); }, { passive: false });
 window.addEventListener('mousemove', onDragMove);
 window.addEventListener('touchmove', e => onDragMove(e.touches[0]), {passive:true});
 window.addEventListener('mouseup', onDragEnd);
@@ -584,6 +584,7 @@ function onAerialWheel(e) {
 }
 
 function onDragStart(e) {
+  e.preventDefault();
   if (isZoomed) {
     panActive = true;
     panStartX = e.clientX;
@@ -990,8 +991,6 @@ function renderMiniMapHotspots() {
   updateMiniMapFov();
 }
 
-const FOV_WIDTH = 56, FOV_HEIGHT = 42; // frustum size; apex at bottom center
-
 function updateMiniMapFov(forceTrueNorth) {
   if (!currentHotspot) return;
   const wrap = document.getElementById('mini-map');
@@ -1008,15 +1007,15 @@ function updateMiniMapFov(forceTrueNorth) {
   const pyView = rendered.top  + hs.map_y * (rendered.height / natH);
   const px = pxView - wrapRect.left;
   const py = pyView - wrapRect.top;
-  fov.style.left = (px - FOV_WIDTH / 2) + 'px';
-  fov.style.top  = (py - FOV_HEIGHT) + 'px';
+  fov.style.left = px + 'px';
+  fov.style.top  = py + 'px';
   const verData = hs.interior_images.find(v => v.version === currentVersion) || hs.interior_images[0];
   const trueNorth = typeof forceTrueNorth === 'number'
     ? forceTrueNorth
     : (verData && typeof verData.true_north_degrees === 'number' ? verData.true_north_degrees : 0);
   const mapNorth = currentMeta && typeof currentMeta.map_north_degrees === 'number' ? currentMeta.map_north_degrees : 0;
   const angle = normAngle(mapNorth + headingOffset);
-  fov.style.transform = `rotate(${angle}deg)`;
+  fov.style.transform = `translate(-50%,-50%) rotate(${angle}deg)`;
 }
 
 </script>
