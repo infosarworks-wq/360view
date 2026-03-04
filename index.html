@@ -48,6 +48,10 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 #floor-select{background:rgba(28,28,28,0.9);border:1px solid var(--border);color:var(--white);font-family:var(--font-ui);font-size:0.78rem;padding:5px 12px;cursor:pointer;outline:none;letter-spacing:0.1em;transition:border-color 0.2s;}
 #floor-select:hover{border-color:var(--gold);}
 
+#rooms-btn{display:none;align-items:center;gap:8px;background:none;border:1px solid var(--border);color:var(--white);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.18em;padding:6px 18px;cursor:pointer;text-transform:uppercase;transition:border-color 0.2s,color 0.2s;}
+#rooms-btn.visible{display:flex;}
+#rooms-btn:hover{border-color:var(--gold);color:var(--gold);}
+
 #back-btn{display:none;align-items:center;gap:8px;background:none;border:1px solid var(--border);color:var(--white);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.18em;padding:6px 18px;cursor:pointer;text-transform:uppercase;transition:border-color 0.2s,color 0.2s;}
 #back-btn:hover{border-color:var(--gold);color:var(--gold);}
 #back-btn.visible{display:flex;}
@@ -84,6 +88,24 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 /* Hint */
 #hint{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);font-size:0.62rem;letter-spacing:0.25em;color:var(--muted);text-transform:uppercase;pointer-events:none;transition:opacity 1s ease;}
 #hint.gone{opacity:0;}
+
+/* MAP VIEW */
+#map-view{position:fixed;inset:0;display:none;background:var(--black);}
+#map-view.visible{display:block;}
+#map-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;}
+#map-hotspot-layer{position:absolute;inset:0;pointer-events:none;}
+.map-hs{position:absolute;width:40px;height:40px;transform:translate(-50%,-50%);cursor:pointer;pointer-events:all;}
+.map-hs img{width:100%;height:100%;filter:drop-shadow(0 0 8px rgba(50,200,50,0.6));}
+
+/* MINI MAP */
+#mini-map{position:fixed;right:24px;bottom:24px;width:220px;height:220px;border:1px solid var(--border);background:rgba(10,10,10,0.92);opacity:0.5;display:none;z-index:220;}
+#mini-map.visible{display:block;}
+#mini-map img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;}
+#mini-map-hotspots{position:absolute;inset:0;pointer-events:none;}
+.mini-hs{position:absolute;width:18px;height:18px;transform:translate(-50%,-50%);cursor:pointer;pointer-events:all;}
+.mini-hs img{width:100%;height:100%;filter:drop-shadow(0 0 6px rgba(50,200,50,0.7));}
+#mini-map-fov{position:absolute;width:32px;height:32px;transform-origin:50% 80%;pointer-events:none;}
+#mini-map-fov::before{content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-100%);border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:14px solid rgba(200,169,110,0.9);}
 
 /* INTERIOR */
 #interior-view{position:fixed;inset:0;display:none;}
@@ -152,6 +174,7 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
       <label>Floor</label>
       <select id="floor-select"></select>
     </div>
+    <button id="rooms-btn" onclick="openRooms()">Rooms</button>
     <button id="back-btn" onclick="goBackToAerial()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="15 18 9 12 15 6"/></svg>
       Aerial View
@@ -175,6 +198,19 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
     <div id="pannellum-container"></div>
     <div id="room-label"></div>
     <div id="version-tabs"></div>
+  </div>
+
+  <!-- MAP VIEW -->
+  <div id="map-view">
+    <img id="map-img" src="" alt="">
+    <div id="map-hotspot-layer"></div>
+  </div>
+
+  <!-- MINI MAP -->
+  <div id="mini-map">
+    <img id="mini-map-img" src="" alt="">
+    <div id="mini-map-hotspots"></div>
+    <div id="mini-map-fov"></div>
   </div>
 
   <!-- LOGO OVERLAY -->
@@ -237,6 +273,8 @@ let panBaseY   = 0;
 // Logo / gaze
 let logoConfig = null;
 let gazeTimer  = null;
+let viewMode   = 'exterior'; // 'exterior' | 'map' | 'interior'
+let headingOffset = 0;       // yaw - true_north for current view
 
 // ============================================================
 // UTILS
@@ -288,6 +326,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   buildRowDots();
   await showFloor('floor1');
   setLoader(100, 'Ready');
+  document.getElementById('rooms-btn').classList.add('visible');
 
   setTimeout(() => {
     document.getElementById('loading-screen').classList.add('hidden');
@@ -378,20 +417,19 @@ async function showFloor(floorKey) {
 // AERIAL VIEW
 // ============================================================
 function showAerialView() {
+  viewMode = 'exterior';
   document.getElementById('aerial-view').classList.remove('hidden');
+  document.getElementById('map-view').classList.remove('visible');
   document.getElementById('interior-view').classList.remove('visible');
   document.getElementById('back-btn').classList.remove('visible');
   document.getElementById('room-label').classList.remove('visible');
   document.getElementById('version-tabs').classList.remove('visible');
   stopGazeMonitor();
+  document.getElementById('mini-map').classList.remove('visible');
 }
 
 function getAerialPath(idx, hiRes) {
-  // New schema: single map image per floor
-  if (currentMeta && currentMeta.map_image_path) {
-    return bucketUrl(currentMeta.map_image_path);
-  }
-  // Old schema: multi-frame aerial sprite with low/high_res paths
+  // Sprite-based exterior 360 (legacy schema)
   const av = currentMeta && currentMeta.aerial_view;
   if (av && (av.low_res_path || av.high_res_path)) {
     const base = hiRes
@@ -399,7 +437,10 @@ function getAerialPath(idx, hiRes) {
       : (av.low_res_path || av.high_res_path);
     return bucketUrl(base + imgFilename(idx));
   }
-  // Fallback: derived from project/floor/map.jpg
+  // Fallback: simple map image
+  if (currentMeta && currentMeta.map_image_path) {
+    return bucketUrl(currentMeta.map_image_path);
+  }
   return bucketUrl(`${projectName}/${currentFloor}/map.jpg`);
 }
 
@@ -643,12 +684,14 @@ function applyPan() {
 // ============================================================
 // ENTER ROOM (INTERIOR)
 // ============================================================
-function enterRoom(hotspot) {
+function enterRoom(hotspot, preserveHeading) {
   currentHotspot = hotspot;
   currentVersion = 1;
 
   fadeTransition(() => {
+    viewMode = 'interior';
     document.getElementById('aerial-view').classList.add('hidden');
+    document.getElementById('map-view').classList.remove('visible');
     document.getElementById('interior-view').classList.add('visible');
     document.getElementById('back-btn').classList.add('visible');
 
@@ -657,7 +700,8 @@ function enterRoom(hotspot) {
     label.classList.add('visible');
 
     buildVersionTabs(hotspot);
-    loadVersion(hotspot, 1, null);
+    loadVersion(hotspot, 1, preserveHeading === true);
+    showMiniMap();
     startGazeMonitor();
   });
 }
@@ -703,7 +747,13 @@ function switchVersion(hotspot, vNum) {
 // ============================================================
 // LOAD PANORAMA VERSION
 // ============================================================
-function loadVersion(hotspot, vNum, preserveYaw) {
+function normAngle(deg) {
+  let d = deg % 360;
+  if (d < 0) d += 360;
+  return d;
+}
+
+function loadVersion(hotspot, vNum, preserveHeading) {
   const verData = hotspot.interior_images.find(v => v.version === vNum);
   if (!verData) return;
 
@@ -732,11 +782,13 @@ function loadVersion(hotspot, vNum, preserveYaw) {
   }
 
   // Apply rotation offset + anchor for version alignment
-  let yaw = 0;
-  if (preserveYaw !== null) {
-    yaw = preserveYaw - (verData.rotation_offset || 0);
+  const trueNorth = typeof verData.true_north_degrees === 'number' ? verData.true_north_degrees : 0;
+  let yaw;
+  if (preserveHeading) {
+    yaw = normAngle(trueNorth + headingOffset);
   } else {
     yaw = verData.rotation_offset || 0;
+    headingOffset = normAngle(yaw - trueNorth);
   }
 
   // Destroy previous viewer
@@ -785,11 +837,14 @@ function goBackToAerial() {
     stopGazeMonitor();
     if (viewer) { try { viewer.destroy(); } catch(e){} viewer = null; }
     document.getElementById('interior-view').classList.remove('visible');
+    document.getElementById('map-view').classList.remove('visible');
     document.getElementById('aerial-view').classList.remove('hidden');
     document.getElementById('back-btn').classList.remove('visible');
     document.getElementById('room-label').classList.remove('visible');
     document.getElementById('version-tabs').classList.remove('visible');
     document.getElementById('logo-overlay').classList.remove('visible');
+    document.getElementById('mini-map').classList.remove('visible');
+    viewMode = 'exterior';
     renderHotspots(currentImg);
   });
 }
@@ -803,6 +858,14 @@ function startGazeMonitor() {
   gazeTimer = setInterval(() => {
     try {
       const pitch = viewer.getPitch();
+      const yaw   = viewer.getYaw();
+      // Update heading offset relative to true north for current version
+      if (currentHotspot) {
+        const verData = currentHotspot.interior_images.find(v => v.version === currentVersion) || currentHotspot.interior_images[0];
+        const trueNorth = verData && typeof verData.true_north_degrees === 'number' ? verData.true_north_degrees : 0;
+        headingOffset = normAngle(yaw - trueNorth);
+        updateMiniMapFov(trueNorth);
+      }
       const threshold = -(logoConfig.y_axis_threshold || 45);
       const overlay = document.getElementById('logo-overlay');
       if (pitch <= threshold) {
@@ -832,6 +895,109 @@ function trackGaze() {
 document.getElementById('aerial-img').addEventListener('load', () => {
   if (!isZoomed) renderHotspots(currentImg);
 });
+
+// ============================================================
+// MAP + MINI MAP
+// ============================================================
+function openRooms() {
+  if (!currentMeta || !currentMeta.map_image_path) return;
+  viewMode = 'map';
+  document.getElementById('aerial-view').classList.add('hidden');
+  document.getElementById('interior-view').classList.remove('visible');
+  document.getElementById('room-label').classList.remove('visible');
+  document.getElementById('version-tabs').classList.remove('visible');
+  document.getElementById('back-btn').classList.add('visible');
+  document.getElementById('mini-map').classList.remove('visible');
+
+  const img = document.getElementById('map-img');
+  img.src = bucketUrl(currentMeta.map_image_path || `${projectName}/${currentFloor}/map.jpg`);
+  img.onload = () => renderMapHotspotsFull();
+}
+
+function renderMapHotspotsFull() {
+  const img = document.getElementById('map-img');
+  const layer = document.getElementById('map-hotspot-layer');
+  layer.innerHTML = '';
+  if (!currentMeta || !currentMeta.hotspots) return;
+  const rect = img.getBoundingClientRect();
+  const natW = img.naturalWidth || rect.width;
+  const natH = img.naturalHeight || rect.height;
+  const rendered = containedImageRect(natW, natH, rect.width, rect.height);
+  currentMeta.hotspots.forEach(hs => {
+    if (typeof hs.map_x !== 'number' || typeof hs.map_y !== 'number') return;
+    const px = rendered.left + hs.map_x * (rendered.width / natW);
+    const py = rendered.top  + hs.map_y * (rendered.height / natH);
+    const btn = document.createElement('div');
+    btn.className = 'map-hs';
+    btn.style.left = px + 'px';
+    btn.style.top  = py + 'px';
+    const icon = document.createElement('img');
+    icon.src = EYE_ICON_SRC;
+    icon.alt = hs.room_name;
+    btn.appendChild(icon);
+    btn.addEventListener('click', () => enterRoom(hs, false));
+    layer.appendChild(btn);
+  });
+}
+
+function showMiniMap() {
+  if (!currentMeta || !currentMeta.map_image_path) return;
+  const wrap = document.getElementById('mini-map');
+  const img = document.getElementById('mini-map-img');
+  img.src = bucketUrl(currentMeta.map_image_path || `${projectName}/${currentFloor}/map.jpg`);
+  img.onload = () => renderMiniMapHotspots();
+  wrap.classList.add('visible');
+}
+
+function renderMiniMapHotspots() {
+  const img = document.getElementById('mini-map-img');
+  const layer = document.getElementById('mini-map-hotspots');
+  layer.innerHTML = '';
+  if (!currentMeta || !currentMeta.hotspots) return;
+  const rect = img.getBoundingClientRect();
+  const natW = img.naturalWidth || rect.width;
+  const natH = img.naturalHeight || rect.height;
+  const rendered = containedImageRect(natW, natH, rect.width, rect.height);
+  currentMeta.hotspots.forEach(hs => {
+    if (typeof hs.map_x !== 'number' || typeof hs.map_y !== 'number') return;
+    const px = rendered.left + hs.map_x * (rendered.width / natW);
+    const py = rendered.top  + hs.map_y * (rendered.height / natH);
+    const btn = document.createElement('div');
+    btn.className = 'mini-hs';
+    btn.style.left = px + 'px';
+    btn.style.top  = py + 'px';
+    const icon = document.createElement('img');
+    icon.src = EYE_ICON_SRC;
+    icon.alt = hs.room_name;
+    btn.appendChild(icon);
+    btn.addEventListener('click', () => enterRoom(hs, true));
+    layer.appendChild(btn);
+  });
+  updateMiniMapFov();
+}
+
+function updateMiniMapFov(forceTrueNorth) {
+  if (!currentHotspot) return;
+  const img = document.getElementById('mini-map-img');
+  const fov = document.getElementById('mini-map-fov');
+  const rect = img.getBoundingClientRect();
+  const natW = img.naturalWidth || rect.width;
+  const natH = img.naturalHeight || rect.height;
+  const rendered = containedImageRect(natW, natH, rect.width, rect.height);
+  const hs = currentHotspot;
+  if (typeof hs.map_x !== 'number' || typeof hs.map_y !== 'number') return;
+  const px = rendered.left + hs.map_x * (rendered.width / natW);
+  const py = rendered.top  + hs.map_y * (rendered.height / natH);
+  fov.style.left = px + 'px';
+  fov.style.top  = py + 'px';
+  const verData = hs.interior_images.find(v => v.version === currentVersion) || hs.interior_images[0];
+  const trueNorth = typeof forceTrueNorth === 'number'
+    ? forceTrueNorth
+    : (verData && typeof verData.true_north_degrees === 'number' ? verData.true_north_degrees : 0);
+  const mapNorth = currentMeta && typeof currentMeta.map_north_degrees === 'number' ? currentMeta.map_north_degrees : 0;
+  const angle = normAngle(mapNorth + headingOffset);
+  fov.style.transform = `translate(-50%,-50%) rotate(${angle}deg)`;
+}
 
 </script>
 
