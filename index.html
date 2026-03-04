@@ -60,10 +60,12 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 #aerial-view{position:fixed;inset:0;background:var(--black);cursor:grab;overflow:hidden;}
 #aerial-view:active{cursor:grabbing;}
 #aerial-view.hidden{display:none;}
-#aerial-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;}
+#aerial-zoom-wrap{position:absolute;inset:0;overflow:hidden;transform-origin:center center;}
+#aerial-zoom-wrap .pan-mode{cursor:move;}
+#aerial-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;transition:none;}
 
-/* 4K pan mode */
-#aerial-img.pan-mode{object-fit:none;cursor:move;transition:none;}
+/* Zoomed pan mode */
+#aerial-img.pan-mode{object-fit:none;}
 
 #hotspot-layer{position:absolute;inset:0;pointer-events:none;}
 .hs-btn{position:absolute;width:52px;height:52px;transform:translate(-50%,-50%);cursor:pointer;pointer-events:all;transition:transform 0.2s;border-radius:50%;overflow:hidden;background:none;}
@@ -99,10 +101,11 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 /* MINI MAP — 16:9, 20% larger, 70% opacity, expand button corner */
 #mini-map{position:fixed;right:24px;bottom:24px;width:336px;height:189px;aspect-ratio:16/9;border:1px solid var(--border);background:rgba(10,10,10,0.92);opacity:0.7;display:none;z-index:220;overflow:hidden;}
 #mini-map.visible{display:block;}
-#mini-map img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;}
-#mini-map-hotspots{position:absolute;inset:0;pointer-events:none;}
-.mini-hs{position:absolute;width:18px;height:18px;transform:translate(-50%,-50%);cursor:pointer;pointer-events:all;}
-.mini-hs svg{width:100%;height:100%;filter:drop-shadow(0 0 6px rgba(50,200,50,0.7));}
+#mini-map-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;z-index:1;}
+#mini-map-hotspots{position:absolute;inset:0;z-index:2;pointer-events:none;}
+#mini-map-hotspots .mini-hs{pointer-events:all;}
+.mini-hs{position:absolute;width:24px;height:24px;transform:translate(-50%,-50%);cursor:pointer;}
+.mini-hs svg{width:100%;height:100%;filter:drop-shadow(0 0 6px rgba(50,200,50,0.7));display:block;}
 /* Full-screen map button: top-right corner of minimap */
 #mini-map-expand{position:absolute;top:6px;right:6px;width:32px;height:32px;z-index:230;border:none;background:rgba(0,0,0,0.6);border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--white);transition:background 0.2s;}
 #mini-map-expand:hover{background:rgba(0,0,0,0.85);}
@@ -187,14 +190,16 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 
   <!-- AERIAL VIEW -->
   <div id="aerial-view">
-    <img id="aerial-img" src="" alt="" draggable="false">
+    <div id="aerial-zoom-wrap">
+      <img id="aerial-img" src="" alt="" draggable="false">
+    </div>
     <div id="hotspot-layer"></div>
     <div id="row-dots"></div>
     <div id="zoom-bar">
-      <div class="zoom-badge">4K — Pan Mode</div>
+      <div class="zoom-badge">3× — Pan Mode</div>
       <button id="exit-zoom" onclick="exitZoom()">Exit Zoom</button>
     </div>
-    <div id="hint">Double-click for 4K &nbsp;·&nbsp; Drag to rotate</div>
+    <div id="hint">Double-click to zoom &nbsp;·&nbsp; Scroll or pinch 1–5× &nbsp;·&nbsp; Drag to rotate</div>
   </div>
 
   <!-- INTERIOR VIEW -->
@@ -291,8 +296,11 @@ let floorData     = {};   // { floor1: metadataObj, ... }
 let currentFloor  = 'floor1';
 let currentMeta   = null;
 let currentImg    = 1;    // 1-indexed
-let isZoomed      = false;
-let zoomCache     = {};
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 5;
+const DOUBLE_CLICK_ZOOM = 3;
+let zoomLevel    = 1;   // 1..5; >1 = zoomed pan mode
+let zoomCache    = {};
 let interiorCache = {};
 let currentHotspot = null;
 let currentVersion = 1;
@@ -318,6 +326,9 @@ let panOffsetX = 0;
 let panOffsetY = 0;
 let panBaseX   = 0;
 let panBaseY   = 0;
+
+let pinchStartDist = 0;
+let pinchStartZoom = 1;
 
 // Logo / gaze
 let logoConfig = null;
@@ -373,10 +384,12 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   setLoader(60, 'Loading imagery');
   await discoverFloors();
-  setLoader(85, 'Building interface');
+  setLoader(70, 'Building interface');
   buildFloorSelector();
   buildRowDots();
   await showFloor('floor1');
+  setLoader(75, 'Preloading exterior views');
+  await preloadAerialImages();
   setLoader(100, 'Ready');
   document.getElementById('rooms-btn').classList.add('visible');
 
@@ -451,8 +464,12 @@ async function showFloor(floorKey) {
   currentMeta  = floorData[floorKey];
   currentRow   = 0;
   currentImg   = 1;
-  isZoomed     = false;
+  zoomLevel    = 1;
+  panOffsetX   = 0;
+  panOffsetY   = 0;
   document.getElementById('zoom-bar').classList.remove('visible');
+  document.getElementById('aerial-img').classList.remove('pan-mode');
+  applyZoomPan();
 
   // Logo config
   if (currentMeta.logo) {
@@ -515,6 +532,20 @@ function loadAerialImage(idx, hiRes = false) {
   if (!hiRes) renderHotspots(idx);
 }
 
+function preloadAerialImages() {
+  const promises = [];
+  for (let i = 1; i <= TOTAL_IMAGES; i++) {
+    const src = getAerialPath(i, false);
+    promises.push(new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => resolve();
+      img.onerror = () => resolve();
+      img.src = src;
+    }));
+  }
+  return Promise.all(promises);
+}
+
 function buildRowDots() {
   const container = document.getElementById('row-dots');
   container.innerHTML = '';
@@ -550,7 +581,7 @@ function renderHotspots(imgIdx) {
   const layer = document.getElementById('hotspot-layer');
   layer.innerHTML = '';
   if (!currentMeta || !currentMeta.hotspots) return;
-  if (isZoomed) return;
+  if (zoomLevel > 1) return;
 
   const aerialEl = document.getElementById('aerial-img');
   const bRect = aerialEl.getBoundingClientRect();
@@ -600,7 +631,7 @@ function containedImageRect(natW, natH, dispW, dispH) {
 
 // Re-render hotspots when window resizes
 window.addEventListener('resize', () => {
-  if (!isZoomed) renderHotspots(currentImg);
+  if (zoomLevel <= 1) renderHotspots(currentImg);
 });
 
 // ============================================================
@@ -609,22 +640,92 @@ window.addEventListener('resize', () => {
 const aerialEl = document.getElementById('aerial-view');
 
 aerialEl.addEventListener('mousedown', onDragStart);
-aerialEl.addEventListener('touchstart', e => { e.preventDefault(); onDragStart(e.touches[0]); }, { passive: false });
+aerialEl.addEventListener('touchstart', e => {
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    pinchStartDist = Math.hypot(e.touches[1].clientX - e.touches[0].clientX, e.touches[1].clientY - e.touches[0].clientY);
+    pinchStartZoom = zoomLevel;
+  } else if (e.touches.length === 1) {
+    e.preventDefault();
+    onDragStart(e.touches[0]);
+  }
+}, { passive: false });
 window.addEventListener('mousemove', onDragMove);
 window.addEventListener('touchmove', e => {
+  if (e.touches.length === 2 && pinchStartDist > 0) {
+    e.preventDefault();
+    const dist = Math.hypot(e.touches[1].clientX - e.touches[0].clientX, e.touches[1].clientY - e.touches[0].clientY);
+    const scale = dist / pinchStartDist;
+    let next = Math.round(pinchStartZoom * scale);
+    next = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, next));
+    if (next !== zoomLevel) {
+      zoomLevel = next;
+      if (zoomLevel === 1) {
+        panOffsetX = 0;
+        panOffsetY = 0;
+        document.getElementById('zoom-bar').classList.remove('visible');
+        document.getElementById('aerial-img').classList.remove('pan-mode');
+        loadAerialImage(currentImg, false);
+        renderHotspots(currentImg);
+      } else {
+        if (zoomLevel === 2) {
+          document.getElementById('zoom-bar').classList.add('visible');
+          document.getElementById('hotspot-layer').innerHTML = '';
+          document.getElementById('hint').classList.add('gone');
+          document.getElementById('aerial-img').classList.add('pan-mode');
+        }
+        loadAerialImage(currentImg, true);
+      }
+      applyZoomPan();
+      updateZoomBadge();
+      pinchStartZoom = zoomLevel;
+      pinchStartDist = dist;
+    }
+    return;
+  }
+  if (e.touches.length === 1) pinchStartDist = 0;
   if (dragActive || panActive) e.preventDefault();
   if (e.touches && e.touches[0]) onDragMove(e.touches[0]);
 }, { passive: false });
 window.addEventListener('mouseup', onDragEnd);
-window.addEventListener('touchend', onDragEnd);
+window.addEventListener('touchend', e => {
+  if (e.touches.length < 2) pinchStartDist = 0;
+  onDragEnd();
+});
 
 aerialEl.addEventListener('dblclick', onDoubleClick);
 
 aerialEl.addEventListener('wheel', onAerialWheel, { passive: false });
 
 function onAerialWheel(e) {
-  if (isZoomed) return;
   e.preventDefault();
+  if (zoomLevel > 1) {
+    const delta = e.deltaY > 0 ? -1 : 1;
+    const next = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomLevel + delta));
+    if (next !== zoomLevel) {
+      zoomLevel = next;
+      if (zoomLevel === 1) {
+        panOffsetX = 0;
+        panOffsetY = 0;
+        document.getElementById('zoom-bar').classList.remove('visible');
+        const img = document.getElementById('aerial-img');
+        img.classList.remove('pan-mode');
+        loadAerialImage(currentImg, false);
+        renderHotspots(currentImg);
+      } else {
+        if (zoomLevel === 2) {
+          document.getElementById('zoom-bar').classList.add('visible');
+          document.getElementById('hotspot-layer').innerHTML = '';
+          document.getElementById('hint').classList.add('gone');
+          document.getElementById('aerial-img').classList.add('pan-mode');
+        }
+        loadAerialImage(currentImg, true);
+      }
+      applyZoomPan();
+      updateZoomBadge();
+    }
+    return;
+  }
   const delta = e.deltaY > 0 ? 1 : -1;
   let next = currentImg + delta;
   if (next < 1) next = TOTAL_IMAGES;
@@ -637,7 +738,7 @@ function onAerialWheel(e) {
 
 function onDragStart(e) {
   if (e && typeof e.preventDefault === 'function') e.preventDefault();
-  if (isZoomed) {
+  if (zoomLevel > 1) {
     panActive = true;
     panStartX = e.clientX;
     panStartY = e.clientY;
@@ -656,7 +757,7 @@ function onDragStart(e) {
 }
 
 function onDragMove(e) {
-  if (isZoomed && panActive) {
+  if (zoomLevel > 1 && panActive) {
     const dx = e.clientX - panStartX;
     const dy = e.clientY - panStartY;
     panOffsetX = panBaseX + dx;
@@ -697,7 +798,7 @@ function onDragMove(e) {
 }
 
 function onDragEnd() {
-  if (isZoomed) { panActive = false; return; }
+  if (zoomLevel > 1) { panActive = false; return; }
   dragActive = false;
   // Momentum scroll on release
   if (Math.abs(velocity) > 0.3) {
@@ -720,39 +821,61 @@ function applyMomentum(vel) {
 }
 
 // ============================================================
-// ZOOM (4K)
+// ZOOM (1–5×, wheel + pinch + double-click; double-click to 3× then out)
 // ============================================================
-function onDoubleClick(e) {
-  if (isZoomed) return;
-  isZoomed = true;
-  panOffsetX = 0; panOffsetY = 0;
+function applyZoomPan() {
+  const wrap = document.getElementById('aerial-zoom-wrap');
+  const img = document.getElementById('aerial-img');
+  if (zoomLevel <= 1) {
+    wrap.style.transform = 'scale(1) translate(0, 0)';
+    img.style.objectPosition = '';
+    return;
+  }
+  wrap.style.transform = `scale(${zoomLevel}) translate(${-panOffsetX / zoomLevel}px, ${-panOffsetY / zoomLevel}px)`;
+}
 
-  // Clear hotspots
+function updateZoomBadge() {
+  const badge = document.querySelector('.zoom-badge');
+  if (badge) badge.textContent = zoomLevel + '× — Pan Mode';
+}
+
+function onDoubleClick(e) {
+  if (zoomLevel > 1) {
+    zoomLevel = 1;
+    panOffsetX = 0;
+    panOffsetY = 0;
+    document.getElementById('zoom-bar').classList.remove('visible');
+    document.getElementById('aerial-img').classList.remove('pan-mode');
+    loadAerialImage(currentImg, false);
+    renderHotspots(currentImg);
+    applyZoomPan();
+    return;
+  }
+  zoomLevel = DOUBLE_CLICK_ZOOM;
+  panOffsetX = 0;
+  panOffsetY = 0;
   document.getElementById('hotspot-layer').innerHTML = '';
   document.getElementById('hint').classList.add('gone');
   document.getElementById('zoom-bar').classList.add('visible');
-
-  const img = document.getElementById('aerial-img');
-  img.classList.add('pan-mode');
-  img.style.transform = 'none';
-
+  document.getElementById('aerial-img').classList.add('pan-mode');
   loadAerialImage(currentImg, true);
+  applyZoomPan();
+  updateZoomBadge();
 }
 
 function exitZoom() {
-  isZoomed = false;
-  panOffsetX = 0; panOffsetY = 0;
-  const img = document.getElementById('aerial-img');
-  img.classList.remove('pan-mode');
-  img.style.transform = '';
+  zoomLevel = 1;
+  panOffsetX = 0;
+  panOffsetY = 0;
   document.getElementById('zoom-bar').classList.remove('visible');
+  document.getElementById('aerial-img').classList.remove('pan-mode');
   loadAerialImage(currentImg, false);
   renderHotspots(currentImg);
+  applyZoomPan();
 }
 
 function applyPan() {
-  const img = document.getElementById('aerial-img');
-  img.style.objectPosition = `calc(50% + ${panOffsetX}px) calc(50% + ${panOffsetY}px)`;
+  applyZoomPan();
 }
 
 // ============================================================
@@ -955,7 +1078,7 @@ function trackGaze() {
 // AFTER IMAGE LOAD — re-render hotspots
 // ============================================================
 document.getElementById('aerial-img').addEventListener('load', () => {
-  if (!isZoomed) renderHotspots(currentImg);
+  if (zoomLevel <= 1) renderHotspots(currentImg);
 });
 
 // ============================================================
