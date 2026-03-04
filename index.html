@@ -387,11 +387,20 @@ function showAerialView() {
 }
 
 function getAerialPath(idx, hiRes) {
-  const res = hiRes ? 'high_res' : 'low_res';
-  const av  = currentMeta.aerial_view;
-  // Support both explicit paths and derived paths
-  const base = hiRes ? av.high_res_path : av.low_res_path;
-  return bucketUrl(base + imgFilename(idx));
+  // New schema: single map image per floor
+  if (currentMeta && currentMeta.map_image_path) {
+    return bucketUrl(currentMeta.map_image_path);
+  }
+  // Old schema: multi-frame aerial sprite with low/high_res paths
+  const av = currentMeta && currentMeta.aerial_view;
+  if (av && (av.low_res_path || av.high_res_path)) {
+    const base = hiRes
+      ? (av.high_res_path || av.low_res_path)
+      : (av.low_res_path || av.high_res_path);
+    return bucketUrl(base + imgFilename(idx));
+  }
+  // Fallback: derived from project/floor/map.jpg
+  return bucketUrl(`${projectName}/${currentFloor}/map.jpg`);
 }
 
 function loadAerialImage(idx, hiRes = false) {
