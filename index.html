@@ -284,7 +284,8 @@ function imgIndex(row, col) {
   return row * COLS + col + 1;
 }
 function imgFilename(idx) {
-  return String(idx).padStart(4, '0') + '.png';
+  // Current bucket uses 1.jpg ... 120.jpg naming
+  return String(idx) + '.jpg';
 }
 function bucketUrl(path) {
   return `${BUCKET_BASE}/${path}`;
@@ -429,7 +430,7 @@ function showAerialView() {
 }
 
 function getAerialPath(idx, hiRes) {
-  // Sprite-based exterior 360 (legacy schema)
+  // Preferred: 120-image exterior sprite, either from metadata or convention
   const av = currentMeta && currentMeta.aerial_view;
   if (av && (av.low_res_path || av.high_res_path)) {
     const base = hiRes
@@ -437,11 +438,9 @@ function getAerialPath(idx, hiRes) {
       : (av.low_res_path || av.high_res_path);
     return bucketUrl(base + imgFilename(idx));
   }
-  // Fallback: simple map image
-  if (currentMeta && currentMeta.map_image_path) {
-    return bucketUrl(currentMeta.map_image_path);
-  }
-  return bucketUrl(`${projectName}/${currentFloor}/map.jpg`);
+  // Conventional layout: PROJECT/floorX/aerial_view/low_res|high_res/0001.png
+  const derivedBase = `${projectName}/${currentFloor}/aerial_view/${hiRes ? 'high_res' : 'low_res'}/`;
+  return bucketUrl(derivedBase + imgFilename(idx));
 }
 
 function loadAerialImage(idx, hiRes = false) {
@@ -905,6 +904,7 @@ function openRooms() {
   if (!currentMeta || !currentMeta.map_image_path) return;
   viewMode = 'map';
   document.getElementById('aerial-view').classList.add('hidden');
+  document.getElementById('map-view').classList.add('visible');
   document.getElementById('interior-view').classList.remove('visible');
   document.getElementById('room-label').classList.remove('visible');
   document.getElementById('version-tabs').classList.remove('visible');
