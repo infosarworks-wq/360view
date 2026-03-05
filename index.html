@@ -52,14 +52,9 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 #back-btn{display:none;align-items:center;gap:8px;background:none;border:1px solid var(--border);color:var(--white);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.18em;padding:6px 18px;cursor:pointer;text-transform:uppercase;transition:border-color 0.2s,color 0.2s;}
 #back-btn:hover{border-color:var(--gold);color:var(--gold);}
 #back-btn.visible{display:flex;}
-/* Phone portrait: floating Aerial View so it's always visible in interior */
-#back-btn-float{display:none;position:fixed;left:12px;bottom:80px;z-index:101;align-items:center;gap:8px;background:rgba(10,10,10,0.95);border:1px solid var(--border);color:var(--white);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.18em;padding:8px 16px;cursor:pointer;text-transform:uppercase;transition:border-color 0.2s,color 0.2s;box-shadow:0 4px 20px rgba(0,0,0,0.5);}
-#back-btn-float:hover{border-color:var(--gold);color:var(--gold);}
-#back-btn-float svg{width:18px;height:18px;flex-shrink:0;}
-@media (max-height:600px){
-  body.interior-active #back-btn{display:none !important;}
-  body.interior-active #back-btn-float{display:flex !important;}
-}
+/* Interior: Aerial View button above minimap (desktop + phone same) */
+body.interior-active #back-btn.visible{position:fixed;right:24px;bottom:237px;left:auto;top:auto;z-index:221;background:rgba(10,10,10,0.95);padding:8px 16px;box-shadow:0 4px 20px rgba(0,0,0,0.5);}
+body.interior-active.minimap-collapsed #back-btn.visible{bottom:72px;}
 
 /* AERIAL */
 #aerial-view{position:fixed;inset:0;background:var(--black);cursor:grab;overflow:hidden;}
@@ -199,10 +194,6 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
       Aerial View
     </button>
   </div>
-  <button id="back-btn-float" onclick="goBackToAerial()" aria-label="Back to Aerial View">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="15 18 9 12 15 6"/></svg>
-    Aerial View
-  </button>
 
   <!-- AERIAL VIEW -->
   <div id="aerial-view">
@@ -1167,6 +1158,7 @@ function setMinimapCollapsed(collapsed) {
   minimapCollapsed = collapsed;
   const wrap = document.getElementById('mini-map');
   wrap.classList.toggle('minimap-collapsed', collapsed);
+  document.body.classList.toggle('minimap-collapsed', collapsed);
 }
 
 function showMiniMap() {
@@ -1175,6 +1167,7 @@ function showMiniMap() {
   const img = document.getElementById('mini-map-img');
   wrap.classList.add('visible');
   wrap.classList.toggle('minimap-collapsed', minimapCollapsed);
+  document.body.classList.toggle('minimap-collapsed', minimapCollapsed);
   img.src = bucketUrl(currentMeta.map_image_path || `${projectName}/${currentFloor}/map.jpg`);
   img.onload = () => {
     renderMiniMapHotspots();
