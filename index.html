@@ -52,6 +52,14 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 #back-btn{display:none;align-items:center;gap:8px;background:none;border:1px solid var(--border);color:var(--white);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.18em;padding:6px 18px;cursor:pointer;text-transform:uppercase;transition:border-color 0.2s,color 0.2s;}
 #back-btn:hover{border-color:var(--gold);color:var(--gold);}
 #back-btn.visible{display:flex;}
+/* Phone portrait: floating Aerial View so it's always visible in interior */
+#back-btn-float{display:none;position:fixed;left:12px;bottom:80px;z-index:101;align-items:center;gap:8px;background:rgba(10,10,10,0.95);border:1px solid var(--border);color:var(--white);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.18em;padding:8px 16px;cursor:pointer;text-transform:uppercase;transition:border-color 0.2s,color 0.2s;box-shadow:0 4px 20px rgba(0,0,0,0.5);}
+#back-btn-float:hover{border-color:var(--gold);color:var(--gold);}
+#back-btn-float svg{width:18px;height:18px;flex-shrink:0;}
+@media (max-height:600px){
+  body.interior-active #back-btn{display:none !important;}
+  body.interior-active #back-btn-float{display:flex !important;}
+}
 
 /* AERIAL */
 #aerial-view{position:fixed;inset:0;background:var(--black);cursor:grab;overflow:hidden;}
@@ -192,6 +200,10 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
       Aerial View
     </button>
   </div>
+  <button id="back-btn-float" onclick="goBackToAerial()" aria-label="Back to Aerial View">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="15 18 9 12 15 6"/></svg>
+    Aerial View
+  </button>
 
   <!-- AERIAL VIEW -->
   <div id="aerial-view">
@@ -527,6 +539,7 @@ function showAerialView() {
   document.getElementById('map-view').classList.remove('visible');
   document.getElementById('interior-view').classList.remove('visible');
   document.getElementById('back-btn').classList.remove('visible');
+  document.body.classList.remove('interior-active');
   document.getElementById('room-label').classList.remove('visible');
   document.getElementById('version-tabs').classList.remove('visible');
   stopGazeMonitor();
@@ -898,6 +911,7 @@ function enterRoom(hotspot, preserveHeading) {
     document.getElementById('map-view').classList.remove('visible');
     document.getElementById('interior-view').classList.add('visible');
     document.getElementById('back-btn').classList.add('visible');
+    document.body.classList.add('interior-active');
 
     const label = document.getElementById('room-label');
     label.textContent = hotspot.room_name;
@@ -907,6 +921,9 @@ function enterRoom(hotspot, preserveHeading) {
     loadVersion(hotspot, 1, preserveHeading === true);
     showMiniMap();
     startGazeMonitor();
+    setTimeout(function() {
+      if (document.getElementById('mini-map').classList.contains('visible')) renderMiniMapHotspots();
+    }, 150);
   });
 }
 
@@ -1044,6 +1061,7 @@ function goBackToAerial() {
     document.getElementById('map-view').classList.remove('visible');
     document.getElementById('aerial-view').classList.remove('hidden');
     document.getElementById('back-btn').classList.remove('visible');
+    document.body.classList.remove('interior-active');
     document.getElementById('room-label').classList.remove('visible');
     document.getElementById('version-tabs').classList.remove('visible');
     document.getElementById('logo-overlay').classList.remove('visible');
@@ -1097,6 +1115,7 @@ function openRooms() {
   document.getElementById('aerial-view').classList.add('hidden');
   document.getElementById('map-view').classList.add('visible');
   document.getElementById('interior-view').classList.remove('visible');
+  document.body.classList.remove('interior-active');
   document.getElementById('room-label').classList.remove('visible');
   document.getElementById('version-tabs').classList.remove('visible');
   document.getElementById('back-btn').classList.add('visible');
@@ -1180,8 +1199,12 @@ function renderMiniMapHotspots() {
   if (!currentMeta || !currentMeta.hotspots) return;
   const natW = img.naturalWidth || 1;
   const natH = img.naturalHeight || 1;
-  const wrapW = wrap.offsetWidth || 364;
-  const wrapH = wrap.offsetHeight || 205;
+  if (natW < 2 || natH < 2) return;
+  /* Use fixed minimap content size so hotspot positions stay correct on phone when switching rooms/collapsed state */
+  const content = document.getElementById('mini-map-content');
+  const collapsed = wrap.classList.contains('minimap-collapsed');
+  const wrapW = (!collapsed && content && content.offsetWidth) ? content.offsetWidth : 364;
+  const wrapH = (!collapsed && content && content.offsetHeight) ? content.offsetHeight : 205;
   const rendered = containedImageRect(natW, natH, wrapW, wrapH);
   currentMeta.hotspots.forEach((hs, index) => {
     const { x: mx, y: my } = getMapCoords(hs);
@@ -1219,8 +1242,10 @@ function updateMiniMapFov(forceTrueNorth) {
   if (!fov.querySelector('svg')) fov.appendChild(createFovRaySvg());
   const natW = img.naturalWidth || 1;
   const natH = img.naturalHeight || 1;
-  const wrapW = wrap.offsetWidth || 364;
-  const wrapH = wrap.offsetHeight || 205;
+  const content = document.getElementById('mini-map-content');
+  const collapsed = wrap.classList.contains('minimap-collapsed');
+  const wrapW = (!collapsed && content && content.offsetWidth) ? content.offsetWidth : 364;
+  const wrapH = (!collapsed && content && content.offsetHeight) ? content.offsetHeight : 205;
   const rendered = containedImageRect(natW, natH, wrapW, wrapH);
   const hs = currentHotspot;
   const { x: mx, y: my } = getMapCoords(hs);
