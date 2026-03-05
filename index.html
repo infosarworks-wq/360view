@@ -94,7 +94,7 @@ body.interior-active.minimap-collapsed #back-btn.visible{bottom:72px;}
 #map-view.visible{display:block;}
 #map-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;}
 #map-hotspot-layer{position:absolute;inset:0;pointer-events:none;}
-.map-hs{position:absolute;width:40px;height:40px;transform:translate(-50%,-50%);cursor:pointer;pointer-events:all;}
+.map-hs{position:absolute;width:20px;height:20px;transform:translate(-50%,-50%);cursor:pointer;pointer-events:all;}
 .map-hs img,.map-hs svg{width:100%;height:100%;filter:drop-shadow(0 0 8px rgba(50,200,50,0.6));}
 
 /* MINI MAP — shown on aerial and interior; can be collapsed to a restore bar */
@@ -804,8 +804,8 @@ function onDragMove(e) {
   const dx = e.clientX - dragStartX;
   const dy = e.clientY - dragStartY;
 
-  // Same sensitivity for horizontal and vertical (pixels per image step); no flick/momentum
-  const sensitivity = 80;
+  // Same sensitivity for horizontal and vertical (pixels per image step); 50% faster rotation
+  const sensitivity = 53;
 
   // Horizontal → column
   let colDelta = -Math.round(dx / sensitivity);
