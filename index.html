@@ -68,9 +68,8 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 #aerial-zoom-wrap{position:absolute;inset:0;overflow:hidden;transform-origin:center center;}
 #aerial-zoom-wrap .pan-mode{cursor:move;}
 #aerial-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;transition:none;}
-
-/* Zoomed pan mode */
-#aerial-img.pan-mode{object-fit:none;}
+/* Pan mode: keep contain so image fills wrap when zoomed; black areas were from object-fit:none */
+#aerial-img.pan-mode{object-fit:contain;}
 
 #hotspot-layer{position:absolute;inset:0;pointer-events:none;}
 .hs-btn{position:absolute;width:52px;height:52px;transform:translate(-50%,-50%);cursor:pointer;pointer-events:all;transition:transform 0.2s;border-radius:50%;overflow:hidden;background:none;}
