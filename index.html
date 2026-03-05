@@ -803,8 +803,8 @@ function onDragMove(e) {
   if (zoomLevel > 1 && panActive) {
     const dx = e.clientX - panStartX;
     const dy = e.clientY - panStartY;
-    panOffsetX = panBaseX + dx;
-    panOffsetY = panBaseY + dy;
+    panOffsetX = panBaseX - dx;
+    panOffsetY = panBaseY - dy;
     applyPan();
     return;
   }
