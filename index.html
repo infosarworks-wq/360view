@@ -314,9 +314,6 @@ let dragStartY    = 0;
 let dragImgStart  = 1;
 let dragRowStart  = 0;
 let currentRow    = 0; // 0-indexed
-let velocity      = 0;
-let lastDragX     = 0;
-let lastDragTime  = 0;
 
 // Pan state (4K mode)
 let panActive  = false;
@@ -754,9 +751,6 @@ function onDragStart(e) {
   dragStartY   = e.clientY;
   dragImgStart = currentImg;
   dragRowStart = currentRow;
-  lastDragX    = e.clientX;
-  lastDragTime = Date.now();
-  velocity     = 0;
 }
 
 function onDragMove(e) {
@@ -770,25 +764,18 @@ function onDragMove(e) {
   }
   if (!dragActive) return;
 
-  const now = Date.now();
-  const dt  = now - lastDragTime;
-  if (dt > 0) velocity = (e.clientX - lastDragX) / dt;
-  lastDragX   = e.clientX;
-  lastDragTime = now;
-
   const dx = e.clientX - dragStartX;
   const dy = e.clientY - dragStartY;
 
-  // Sensitivity: pixels per image step
-  const sensitivity = 28;
-  const rowSensitivity = 80;
+  // Same sensitivity for horizontal and vertical (pixels per image step); no flick/momentum
+  const sensitivity = 80;
 
   // Horizontal → column
   let colDelta = -Math.round(dx / sensitivity);
   let newCol   = ((colFromImg(dragImgStart) + colDelta) % COLS + COLS) % COLS;
 
   // Vertical → row (inverted: drag up = higher row, drag down = lower row)
-  let rowDelta = Math.round(dy / rowSensitivity);
+  let rowDelta = Math.round(dy / sensitivity);
   let newRow   = Math.max(0, Math.min(ROWS - 1, dragRowStart + rowDelta));
 
   const newIdx = imgIndex(newRow, newCol);
@@ -803,24 +790,6 @@ function onDragMove(e) {
 function onDragEnd() {
   if (zoomLevel > 1) { panActive = false; return; }
   dragActive = false;
-  // Momentum scroll on release
-  if (Math.abs(velocity) > 0.3) {
-    applyMomentum(velocity);
-  }
-}
-
-function applyMomentum(vel) {
-  let v = vel;
-  const step = () => {
-    if (Math.abs(v) < 0.05) return;
-    v *= 0.88;
-    const dx = -v * 28;
-    let newCol = ((colFromImg(currentImg) - Math.sign(v)) % COLS + COLS) % COLS;
-    currentImg = imgIndex(currentRow, newCol);
-    loadAerialImage(currentImg);
-    requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
 }
 
 // ============================================================
