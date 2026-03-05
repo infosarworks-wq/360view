@@ -115,9 +115,10 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 .mini-hs svg{width:100%;height:100%;filter:drop-shadow(0 0 6px rgba(50,200,50,0.8));display:block;}
 #mini-map-fov{position:absolute;width:56px;height:56px;z-index:5;pointer-events:none;transform-origin:100% 50%;}
 #mini-map-fov svg{width:100%;height:100%;display:block;}
-#mini-map-expand{position:absolute;top:6px;right:6px;width:32px;height:32px;z-index:20;border:none;background:rgba(0,0,0,0.6);border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--white);transition:background 0.2s;}
+#mini-map-expand{position:absolute;bottom:6px;right:6px;width:32px;height:32px;z-index:20;border:none;background:rgba(0,0,0,0.6);border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--white);transition:background 0.2s;}
 #mini-map-expand:hover{background:rgba(0,0,0,0.85);}
 #mini-map-expand svg{width:18px;height:18px;}
+#mini-map-restore-bar svg{width:20px;height:20px;flex-shrink:0;}
 
 /* INTERIOR */
 #interior-view{position:fixed;inset:0;display:none;}
@@ -183,7 +184,7 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
     <div class="brand"><img id="brand-logo" alt="SAR Works"></div>
     <div class="project-name-display" id="project-label"></div>
     <div id="floor-selector">
-      <label>Floor</label>
+      <label for="floor-select">Floor</label>
       <select id="floor-select"></select>
     </div>
     <button id="back-btn" onclick="goBackToAerial()">
@@ -389,16 +390,24 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   setLoader(10, 'Locating project');
 
-  // Try to load floor1_metadata.json (bucket must allow CORS for this origin or use *)
-  const ok = await loadFloorMeta('floor1');
-  if (!ok) { showError('load', bucketUrl(`${projectName}/floor1/floor1_metadata.json`)); return; }
-
-  setLoader(60, 'Loading imagery');
-  await discoverFloors();
+  // Load floors: optional project.json with { "floors": ["basement", "ground", "top_deck", ...] }, else floor1 + floor2..10
+  const firstFromManifest = await loadProjectManifest();
+  if (firstFromManifest !== null) {
+    currentFloor = firstFromManifest;
+  } else {
+    const ok = await loadFloorMeta('floor1');
+    if (!ok) { showError('load', bucketUrl(`${projectName}/floor1/floor1_metadata.json`)); return; }
+    currentFloor = 'floor1';
+    for (let i = 2; i <= 10; i++) {
+      const key = `floor${i}`;
+      const loaded = await loadFloorMeta(key);
+      if (!loaded) break;
+    }
+  }
   setLoader(70, 'Building interface');
   buildFloorSelector();
   buildRowDots();
-  await showFloor('floor1');
+  await showFloor(currentFloor);
   setLoader(75, 'Preloading exterior views');
   await preloadAerialImages();
   setLoader(100, 'Ready');
@@ -426,7 +435,7 @@ function showError(reason, attemptedUrl) {
 }
 
 // ============================================================
-// FLOOR DISCOVERY
+// FLOOR DISCOVERY (supports arbitrary floor keys via project.json or floor1, floor2...)
 // ============================================================
 async function loadFloorMeta(floorKey) {
   const url = bucketUrl(`${projectName}/${floorKey}/${floorKey}_metadata.json`);
@@ -438,28 +447,36 @@ async function loadFloorMeta(floorKey) {
   } catch(e) { return false; }
 }
 
-async function discoverFloors() {
-  // Try floor2 through floor10
-  for (let i = 2; i <= 10; i++) {
-    const key = `floor${i}`;
-    const ok = await loadFloorMeta(key);
-    if (!ok) break;
-  }
+/** Optional: project.json with { "floors": ["floor1", "basement", "top_deck", ...] }. Loads each and returns first key or null. */
+async function loadProjectManifest() {
+  try {
+    const r = await fetch(bucketUrl(`${projectName}/project.json`));
+    if (!r.ok) return null;
+    const data = await r.json();
+    const list = data && Array.isArray(data.floors) ? data.floors : null;
+    if (!list || list.length === 0) return null;
+    for (const key of list) {
+      if (typeof key !== 'string') continue;
+      await loadFloorMeta(key);
+    }
+    return list[0];
+  } catch(e) { return null; }
 }
 
 function buildFloorSelector() {
   const keys = Object.keys(floorData);
-  if (keys.length < 2) return;
+  if (keys.length === 0) return;
   const sel = document.getElementById('floor-select');
   sel.innerHTML = '';
   keys.forEach(k => {
     const meta = floorData[k];
     const opt = document.createElement('option');
     opt.value = k;
-    opt.textContent = meta.floor_name || k;
+    opt.textContent = (meta && meta.floor_name) ? meta.floor_name : k;
     sel.appendChild(opt);
   });
   document.getElementById('floor-selector').classList.add('visible');
+  sel.value = currentFloor;
   sel.addEventListener('change', () => {
     fadeTransition(() => showFloor(sel.value));
   });
@@ -469,8 +486,10 @@ function buildFloorSelector() {
 // FLOOR DISPLAY
 // ============================================================
 async function showFloor(floorKey) {
+  const meta = floorData[floorKey];
+  if (!meta) return;
   currentFloor = floorKey;
-  currentMeta  = floorData[floorKey];
+  currentMeta  = meta;
   currentRow   = 0;
   currentImg   = 1;
   zoomLevel    = 1;
@@ -480,7 +499,10 @@ async function showFloor(floorKey) {
   document.getElementById('aerial-img').classList.remove('pan-mode');
   applyZoomPan();
 
-  // Logo config
+  const sel = document.getElementById('floor-select');
+  if (sel) sel.value = floorKey;
+
+  logoConfig = null;
   if (currentMeta.logo) {
     logoConfig = currentMeta.logo;
     document.getElementById('logo-overlay').style.width  = (logoConfig.display_radius * 2) + 'px';
@@ -491,7 +513,7 @@ async function showFloor(floorKey) {
   const aerialImg = document.getElementById('aerial-img');
   aerialImg.onerror = function onAerialFirstError() {
     aerialImg.onerror = null;
-    if (viewMode === 'exterior') openRooms();
+    if (viewMode === 'exterior' && currentMeta && currentMeta.map_image_path) openRooms();
   };
   loadAerialImage(currentImg);
 }
@@ -866,6 +888,7 @@ function applyPan() {
 // ENTER ROOM (INTERIOR)
 // ============================================================
 function enterRoom(hotspot, preserveHeading) {
+  if (!hotspot || !Array.isArray(hotspot.interior_images) || hotspot.interior_images.length === 0) return;
   currentHotspot = hotspot;
   currentVersion = 1;
 
