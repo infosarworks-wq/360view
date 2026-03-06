@@ -391,6 +391,7 @@ let gazeTimer  = null;
 let viewMode   = 'exterior'; // 'exterior' | 'map' | 'interior'
 let headingOffset = 0;       // yaw - true_north for current view
 let minimapCollapsed = false;
+let aerialFormat = null;     // { lowResBasePath, highResBasePath, ext, style: 'plain'|'pad4' } set after first aerial load
 
 // ============================================================
 // UTILS
@@ -451,6 +452,22 @@ function tryResolveImageUrl(pathOrBase) {
       img.onload = () => resolve(bucketUrl(paths[i]));
       img.onerror = () => { i++; attempt(); };
       img.src = bucketUrl(paths[i]);
+    }
+    attempt();
+  });
+}
+
+function tryResolveImageUrlAndPath(pathOrBase) {
+  const paths = imageCandidates(pathOrBase);
+  return new Promise(resolve => {
+    let i = 0;
+    function attempt() {
+      if (i >= paths.length) { resolve(null); return; }
+      const img = new Image();
+      const path = paths[i];
+      img.onload = () => resolve({ url: bucketUrl(path), path });
+      img.onerror = () => { i++; attempt(); };
+      img.src = bucketUrl(path);
     }
     attempt();
   });
@@ -704,11 +721,38 @@ function getAerialPathBase(idx, hiRes) {
   return [folder + '/' + imgFilename(idx), folder + '/' + String(idx).padStart(4, '0')];
 }
 
+function getAerialImageUrl(idx, hiRes) {
+  if (!aerialFormat) return null;
+  const base = hiRes ? aerialFormat.highResBasePath : aerialFormat.lowResBasePath;
+  const name = aerialFormat.style === 'pad4' ? String(idx).padStart(4, '0') : String(idx);
+  return bucketUrl(base + '/' + name + '.' + aerialFormat.ext);
+}
+
 function loadAerialImage(idx, hiRes = false) {
   const img = document.getElementById('aerial-img');
   if (hiRes && zoomCache[idx]) {
     img.src = zoomCache[idx];
     if (!hiRes) renderHotspots(idx);
+    return;
+  }
+  const directUrl = getAerialImageUrl(idx, hiRes);
+  if (directUrl) {
+    img.onload = function() {
+      img.onload = null;
+      img.onerror = null;
+      if (hiRes) zoomCache[idx] = img.src;
+      if (!hiRes) renderHotspots(idx);
+    };
+    img.onerror = function() {
+      img.onload = null;
+      img.onerror = null;
+      const base = getAerialPathBase(idx, hiRes);
+      tryLoadImage(img, base, () => {
+        if (hiRes) zoomCache[idx] = img.src;
+        if (!hiRes) renderHotspots(idx);
+      });
+    };
+    img.src = directUrl;
     return;
   }
   const base = getAerialPathBase(idx, hiRes);
@@ -719,12 +763,40 @@ function loadAerialImage(idx, hiRes = false) {
 }
 
 function preloadAerialImages() {
-  const promises = [];
-  for (let i = 1; i <= TOTAL_IMAGES; i++) {
-    const base = getAerialPathBase(i, false);
-    promises.push(tryResolveImageUrl(base).then(() => {}));
-  }
-  return Promise.all(promises);
+  const base1 = getAerialPathBase(1, false);
+  return tryResolveImageUrlAndPath(base1).then(result => {
+    if (result && result.path) {
+      const path = result.path;
+      const lastSlash = path.lastIndexOf('/');
+      const basePath = path.slice(0, lastSlash);
+      const filename = path.slice(lastSlash + 1);
+      const ext = filename.split('.').pop() || 'jpg';
+      const nameWithoutExt = filename.replace(/\.[^.]+$/, '');
+      const style = nameWithoutExt.length >= 4 && /^\d+$/.test(nameWithoutExt) ? 'pad4' : 'plain';
+      aerialFormat = {
+        lowResBasePath:  basePath,
+        highResBasePath: basePath.replace(/low_res\/?$/, 'high_res'),
+        ext,
+        style
+      };
+    }
+    const promises = [];
+    for (let i = 1; i <= TOTAL_IMAGES; i++) {
+      const directUrl = getAerialImageUrl(i, false);
+      if (directUrl) {
+        promises.push(new Promise(resolve => {
+          const img = new Image();
+          img.onload = () => resolve();
+          img.onerror = () => resolve();
+          img.src = directUrl;
+        }));
+      } else {
+        const base = getAerialPathBase(i, false);
+        promises.push(tryResolveImageUrl(base).then(() => {}));
+      }
+    }
+    return Promise.all(promises);
+  });
 }
 
 function buildRowDots() {
