@@ -92,6 +92,9 @@ body.interior-active.minimap-collapsed #back-btn.visible{bottom:72px;}
 #map-view{position:fixed;inset:0;display:none;background:var(--black);cursor:grab;}
 #map-view.visible{display:block;}
 #map-view.map-pan-active{cursor:grabbing;}
+#map-back-btn{position:absolute;top:16px;left:16px;z-index:30;display:flex;align-items:center;gap:8px;background:rgba(10,10,10,0.9);border:1px solid var(--border);color:var(--white);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.18em;padding:8px 18px;cursor:pointer;transition:border-color 0.2s,color 0.2s;}
+#map-back-btn:hover{border-color:var(--accent);color:var(--accent);}
+#map-back-btn svg{width:18px;height:18px;flex-shrink:0;}
 #map-zoom-wrap{position:absolute;inset:0;overflow:hidden;transform-origin:center center;}
 #map-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;}
 #map-hotspot-layer{position:absolute;inset:0;pointer-events:none;}
@@ -230,6 +233,10 @@ body.interior-active.minimap-collapsed #back-btn.visible{bottom:72px;}
 
   <!-- MAP VIEW -->
   <div id="map-view">
+    <button type="button" id="map-back-btn" onclick="goBackToAerial()" aria-label="Back">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="15 18 9 12 15 6"/></svg>
+      Back
+    </button>
     <div id="map-zoom-wrap">
       <img id="map-img" src="" alt="" draggable="false">
       <div id="map-hotspot-layer"></div>
@@ -1129,6 +1136,7 @@ function enterRoom(hotspot, preserveHeading) {
   if (!hotspot || !Array.isArray(hotspot.interior_images) || hotspot.interior_images.length === 0) return;
   currentHotspot = hotspot;
   currentVersion = 1;
+  if (viewMode === 'map') resetMapZoom();
 
   fadeTransition(() => {
     viewMode = 'interior';
@@ -1302,6 +1310,7 @@ function goBackToAerial() {
 }
 
 function closeMapView() {
+  resetMapZoom();
   viewMode = 'exterior';
   document.getElementById('map-view').classList.remove('visible');
   document.getElementById('aerial-view').classList.remove('hidden');
@@ -1379,6 +1388,14 @@ function applyMapZoomPan() {
     return;
   }
   wrap.style.transform = `scale(${mapZoomLevel}) translate(${-mapPanX / mapZoomLevel}px, ${-mapPanY / mapZoomLevel}px)`;
+}
+function resetMapZoom() {
+  mapZoomLevel = 1;
+  mapPanX = 0;
+  mapPanY = 0;
+  mapPanActive = false;
+  document.getElementById('map-view').classList.remove('map-pan-active');
+  applyMapZoomPan();
 }
 
 function onMapWheel(e) {
