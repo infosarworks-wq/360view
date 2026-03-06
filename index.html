@@ -4,33 +4,31 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ArchViz Viewer — SAR Works</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600&family=Rajdhani:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css">
 <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   --black:#0a0a0a;--dark:#111;--mid:#1c1c1c;--border:#2a2a2a;
-  --gold:#c8a96e;--gold2:#e8c98e;--white:#f0ede8;--muted:#777;--red:#c0392b;
-  --font-d:'Cormorant Garamond',serif;--font-ui:'Rajdhani',sans-serif;
+  --accent:#FF2026;--white:#f0ede8;--muted:#777;--red:#c0392b;
+  --font-ui:Courier,monospace;
 }
 html,body{width:100%;height:100%;background:var(--black);color:var(--white);font-family:var(--font-ui);overflow:hidden;user-select:none;}
 
 /* LOADING */
 #loading-screen{position:fixed;inset:0;background:var(--black);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:1000;transition:opacity 0.8s ease;}
 #loading-screen.hidden{opacity:0;pointer-events:none;}
-.loader-logo{font-family:var(--font-d);font-size:2.4rem;font-weight:300;letter-spacing:0.35em;color:var(--gold);margin-bottom:0.25rem;}
-.loader-sub{font-size:0.7rem;letter-spacing:0.3em;color:var(--muted);text-transform:uppercase;margin-bottom:3rem;}
+.loader-logo{font-family:var(--font-ui);font-size:2.4rem;font-weight:300;letter-spacing:0.35em;color:var(--accent);margin-bottom:0.25rem;}
+.loader-sub{font-size:0.7rem;letter-spacing:0.3em;color:var(--muted);margin-bottom:3rem;}
 .loader-bar-wrap{width:200px;height:1px;background:var(--border);position:relative;overflow:hidden;}
-.loader-bar{height:100%;background:linear-gradient(90deg,var(--gold),var(--gold2));width:0%;transition:width 0.5s ease;}
-.loader-status{margin-top:1rem;font-size:0.65rem;letter-spacing:0.2em;color:var(--muted);text-transform:uppercase;}
+.loader-bar{height:100%;background:var(--accent);width:0%;transition:width 0.5s ease;}
+.loader-status{margin-top:1rem;font-size:0.65rem;letter-spacing:0.2em;color:var(--muted);}
 
 /* ERROR */
 #error-screen{position:fixed;inset:0;background:var(--black);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:999;}
 #error-screen.visible{display:flex;}
-.error-title{font-family:var(--font-d);font-size:3.5rem;font-weight:300;color:var(--red);letter-spacing:0.1em;margin-bottom:1rem;}
-.error-sub{font-size:0.8rem;letter-spacing:0.25em;color:var(--muted);text-transform:uppercase;}
+.error-title{font-family:var(--font-ui);font-size:3.5rem;font-weight:300;color:var(--red);letter-spacing:0.1em;margin-bottom:1rem;}
+.error-sub{font-size:0.8rem;letter-spacing:0.25em;color:var(--muted);}
 
 /* APP */
 #app{width:100%;height:100%;opacity:0;transition:opacity 0.8s ease;}
@@ -40,17 +38,17 @@ html,body{width:100%;height:100%;background:var(--black);color:var(--white);font
 #topbar{position:fixed;top:0;left:0;right:0;height:60px;background:linear-gradient(180deg,rgba(10,10,10,0.97) 0%,transparent 100%);display:flex;align-items:center;padding:0 28px;z-index:100;gap:16px;}
 .brand{flex:1;display:flex;align-items:center;}
 .brand img{height:32px;object-fit:contain;}
-.project-name-display{font-size:0.7rem;letter-spacing:0.2em;color:var(--muted);text-transform:uppercase;}
+.project-name-display{font-size:0.7rem;letter-spacing:0.2em;color:var(--muted);}
 
 #floor-selector{display:none;align-items:center;gap:10px;}
 #floor-selector.visible{display:flex;}
-#floor-selector label{font-size:0.65rem;letter-spacing:0.2em;color:var(--muted);text-transform:uppercase;}
+#floor-selector label{font-size:0.65rem;letter-spacing:0.2em;color:var(--muted);}
 #floor-select{background:rgba(28,28,28,0.9);border:1px solid var(--border);color:var(--white);font-family:var(--font-ui);font-size:0.78rem;padding:5px 12px;cursor:pointer;outline:none;letter-spacing:0.1em;transition:border-color 0.2s;}
-#floor-select:hover{border-color:var(--gold);}
+#floor-select:hover{border-color:var(--accent);}
 
 
-#back-btn{display:none;align-items:center;gap:8px;background:none;border:1px solid var(--border);color:var(--white);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.18em;padding:6px 18px;cursor:pointer;text-transform:uppercase;transition:border-color 0.2s,color 0.2s;}
-#back-btn:hover{border-color:var(--gold);color:var(--gold);}
+#back-btn{display:none;align-items:center;gap:8px;background:none;border:1px solid var(--border);color:var(--white);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.18em;padding:6px 18px;cursor:pointer;transition:border-color 0.2s,color 0.2s;}
+#back-btn:hover{border-color:var(--accent);color:var(--accent);}
 #back-btn.visible{display:flex;}
 /* Interior: Aerial View button above minimap (desktop + phone same) */
 body.interior-active #back-btn.visible{position:fixed;right:24px;bottom:237px;left:auto;top:auto;z-index:221;background:rgba(10,10,10,0.95);padding:8px 16px;box-shadow:0 4px 20px rgba(0,0,0,0.5);}
@@ -71,7 +69,7 @@ body.interior-active.minimap-collapsed #back-btn.visible{bottom:72px;}
 .hs-btn:hover{transform:translate(-50%,-50%) scale(1.2);}
 .hs-btn img,.hs-btn svg{width:100%;height:100%;filter:drop-shadow(0 0 10px rgba(50,200,50,0.5));transition:filter 0.2s;}
 .hs-btn:hover img,.hs-btn:hover svg{filter:drop-shadow(0 0 18px rgba(50,220,50,0.9));}
-.hs-tooltip{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:rgba(10,10,10,0.92);border:1px solid var(--border);color:var(--white);font-size:0.65rem;letter-spacing:0.15em;padding:4px 10px;white-space:nowrap;text-transform:uppercase;opacity:0;transition:opacity 0.2s;pointer-events:none;}
+.hs-tooltip{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:rgba(10,10,10,0.92);border:1px solid var(--border);color:var(--white);font-size:0.65rem;letter-spacing:0.15em;padding:4px 10px;white-space:nowrap;opacity:0;transition:opacity 0.2s;pointer-events:none;}
 .hs-btn:hover .hs-tooltip{opacity:1;}
 
 /* Row dots (disabled) */
@@ -81,12 +79,12 @@ body.interior-active.minimap-collapsed #back-btn.visible{bottom:72px;}
 /* Zoom indicator */
 #zoom-bar{position:fixed;top:68px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:16px;z-index:80;}
 #zoom-bar.visible{display:flex;}
-.zoom-badge{background:rgba(200,169,110,0.12);border:1px solid var(--gold);color:var(--gold);font-size:0.65rem;letter-spacing:0.25em;padding:5px 16px;text-transform:uppercase;}
-#exit-zoom{background:none;border:1px solid var(--border);color:var(--muted);font-family:var(--font-ui);font-size:0.65rem;letter-spacing:0.2em;padding:5px 16px;cursor:pointer;text-transform:uppercase;transition:border-color 0.2s,color 0.2s;}
-#exit-zoom:hover{border-color:var(--gold);color:var(--gold);}
+.zoom-badge{background:rgba(255,32,38,0.12);border:1px solid var(--accent);color:var(--accent);font-size:0.65rem;letter-spacing:0.25em;padding:5px 16px;}
+#exit-zoom{background:none;border:1px solid var(--border);color:var(--muted);font-family:var(--font-ui);font-size:0.65rem;letter-spacing:0.2em;padding:5px 16px;cursor:pointer;transition:border-color 0.2s,color 0.2s;}
+#exit-zoom:hover{border-color:var(--accent);color:var(--accent);}
 
 /* Hint */
-#hint{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);font-size:0.62rem;letter-spacing:0.25em;color:var(--muted);text-transform:uppercase;pointer-events:none;transition:opacity 1s ease;}
+#hint{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);font-size:0.62rem;letter-spacing:0.25em;color:var(--muted);pointer-events:none;transition:opacity 1s ease;}
 #hint.gone{opacity:0;}
 
 /* MAP VIEW */
@@ -104,8 +102,8 @@ body.interior-active.minimap-collapsed #back-btn.visible{bottom:72px;}
 #mini-map.minimap-collapsed #mini-map-content,
 #mini-map.minimap-collapsed #mini-map-hide-bar{display:none !important;}
 #mini-map.minimap-collapsed #mini-map-restore-bar{display:flex !important;}
-#mini-map-restore-bar{display:none;align-items:center;justify-content:center;gap:8px;width:100%;height:100%;border:none;background:rgba(10,10,10,0.92);color:var(--white);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.15em;cursor:pointer;text-transform:uppercase;}
-#mini-map-restore-bar:hover{background:rgba(28,28,28,0.95);color:var(--gold);}
+#mini-map-restore-bar{display:none;align-items:center;justify-content:center;gap:8px;width:100%;height:100%;border:none;background:rgba(10,10,10,0.92);color:var(--white);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.15em;cursor:pointer;}
+#mini-map-restore-bar:hover{background:rgba(28,28,28,0.95);color:var(--accent);}
 #mini-map-hide-bar{position:absolute;top:0;left:0;right:0;height:32px;z-index:25;display:flex;align-items:center;justify-content:center;border:none;background:rgba(0,0,0,0.65);color:var(--white);cursor:pointer;transition:background 0.2s;}
 #mini-map-hide-bar:hover{background:rgba(0,0,0,0.85);}
 #mini-map-hide-bar svg{width:20px;height:20px;}
@@ -128,16 +126,16 @@ body.interior-active.minimap-collapsed #back-btn.visible{bottom:72px;}
 #pannellum-container{width:100%;height:100%;}
 
 /* Room label */
-#room-label{position:fixed;top:68px;left:50%;transform:translateX(-50%);font-family:var(--font-d);font-size:1.5rem;font-weight:300;letter-spacing:0.35em;color:var(--white);text-transform:uppercase;pointer-events:none;opacity:0;transition:opacity 0.5s ease;text-shadow:0 2px 20px rgba(0,0,0,0.8);}
+#room-label{position:fixed;top:68px;left:50%;transform:translateX(-50%);font-family:var(--font-ui);font-size:1.5rem;font-weight:300;letter-spacing:0.35em;color:var(--white);pointer-events:none;opacity:0;transition:opacity 0.5s ease;text-shadow:0 2px 20px rgba(0,0,0,0.8);}
 #room-label.visible{opacity:1;}
 
 /* Version tabs */
 #version-tabs{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);display:none;align-items:center;border:1px solid var(--border);overflow:hidden;z-index:200;}
 #version-tabs.visible{display:flex;}
-.vtab{background:rgba(10,10,10,0.88);border:none;border-right:1px solid var(--border);color:var(--muted);font-family:var(--font-ui);font-size:0.68rem;letter-spacing:0.18em;padding:8px 20px;cursor:pointer;text-transform:uppercase;transition:background 0.2s,color 0.2s;}
+.vtab{background:rgba(10,10,10,0.88);border:none;border-right:1px solid var(--border);color:var(--muted);font-family:var(--font-ui);font-size:0.68rem;letter-spacing:0.18em;padding:8px 20px;cursor:pointer;transition:background 0.2s,color 0.2s;}
 .vtab:last-child{border-right:none;}
 .vtab:hover{background:var(--mid);color:var(--white);}
-.vtab.active{background:var(--gold);color:var(--black);}
+.vtab.active{background:var(--accent);color:var(--black);}
 
 /* Logo overlay */
 #logo-overlay{position:fixed;pointer-events:none;opacity:0;transition:opacity 0.7s ease;z-index:300;border-radius:50%;overflow:hidden;transform:translate(-50%,-50%);}
@@ -148,13 +146,16 @@ body.interior-active.minimap-collapsed #back-btn.visible{bottom:72px;}
 #fade{position:fixed;inset:0;background:var(--black);opacity:0;pointer-events:none;z-index:600;transition:opacity 0.35s ease;}
 #fade.on{opacity:1;pointer-events:all;}
 
-/* Tutorial overlay — dim 50%, show once */
-#tutorial-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:400;display:none;align-items:flex-start;justify-content:center;padding:20px;box-sizing:border-box;}
-#tutorial-overlay.visible{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:80px;}
-#tutorial-overlay .tutorial-text{max-width:320px;text-align:center;font-size:0.85rem;letter-spacing:0.15em;color:var(--white);text-transform:uppercase;line-height:1.5;margin-bottom:12px;text-shadow:0 1px 4px rgba(0,0,0,0.8);}
-#tutorial-overlay .tutorial-skip{background:rgba(28,28,28,0.95);border:1px solid var(--border);color:var(--muted);font-family:var(--font-ui);font-size:0.7rem;letter-spacing:0.2em;padding:6px 14px;cursor:pointer;text-transform:uppercase;transition:border-color 0.2s,color 0.2s;}
-#tutorial-overlay .tutorial-skip:hover{border-color:var(--gold);color:var(--gold);}
-.tutorial-highlight{z-index:401 !important;box-shadow:0 0 0 4px var(--gold);border-radius:2px;}
+/* Tutorial overlay — dim 50%, show once; text centered, arrow to highlight */
+#tutorial-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:400;display:none;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;}
+#tutorial-overlay.visible{display:flex;flex-direction:column;align-items:center;justify-content:center;}
+#tutorial-overlay .tutorial-text{max-width:340px;text-align:center;font-size:0.95rem;letter-spacing:0.08em;color:#fff;line-height:1.5;margin-bottom:14px;text-shadow:0 0 20px rgba(255,255,255,0.4),0 2px 8px rgba(0,0,0,0.9);font-weight:500;}
+#tutorial-overlay .tutorial-skip{background:rgba(28,28,28,0.95);border:1px solid var(--border);color:var(--muted);font-family:var(--font-ui);font-size:0.7rem;letter-spacing:0.2em;padding:6px 14px;cursor:pointer;transition:border-color 0.2s,color 0.2s;}
+#tutorial-overlay .tutorial-skip:hover{border-color:var(--accent);color:var(--accent);}
+#tutorial-arrow{position:fixed;inset:0;pointer-events:none;z-index:399;display:none;}
+#tutorial-arrow line{stroke:var(--white);stroke-width:2;stroke-linecap:round;}
+#tutorial-arrow polygon{fill:var(--white);}
+.tutorial-highlight{z-index:401 !important;box-shadow:0 0 0 4px var(--accent);border-radius:2px;}
 
 /* Custom pannellum hotspot arrows */
 .pnlm-container .nav-arrow-hs{
@@ -258,6 +259,7 @@ body.interior-active.minimap-collapsed #back-btn.visible{bottom:72px;}
 <div id="fade"></div>
 
 <!-- TUTORIAL (exterior + interior, show once) -->
+<svg id="tutorial-arrow" aria-hidden="true"><defs><marker id="tutorial-arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><polygon points="0 0, 10 4, 0 8"/></marker></defs><line x1="0" y1="0" x2="0" y2="0" marker-end="url(#tutorial-arrowhead)"/></svg>
 <div id="tutorial-overlay">
   <p class="tutorial-text" id="tutorial-text"></p>
   <button type="button" class="tutorial-skip" id="tutorial-skip">Skip</button>
@@ -296,29 +298,40 @@ function createEyeIcon() {
   return svg;
 }
 
-// Rotation indicator: SVG wedge — fade 100% at base (hotspot) to 0% at tip
+// Rotation indicator: SVG wedge — green, fill + stroke gradient (sine-like: hold ~100% halfway, drop to 0% in last ~10%)
 function createFovRaySvg() {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 56 56');
   svg.setAttribute('width', '56');
   svg.setAttribute('height', '56');
   const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-  const grad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-  grad.setAttribute('id', 'fov-ray-gradient');
-  grad.setAttribute('x1', '0%'); grad.setAttribute('y1', '50%');
-  grad.setAttribute('x2', '100%'); grad.setAttribute('y2', '50%');
-  const stop1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-  stop1.setAttribute('offset', '0%');
-  stop1.setAttribute('stop-color', 'rgba(180,220,255,0)');
-  const stop2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-  stop2.setAttribute('offset', '100%');
-  stop2.setAttribute('stop-color', 'rgba(180,220,255,1)');
-  grad.appendChild(stop1); grad.appendChild(stop2);
-  defs.appendChild(grad); svg.appendChild(defs);
+  const greenFull = 'rgba(34,165,34,1)';
+  const greenTrans = 'rgba(34,165,34,0)';
+  const fillGrad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+  fillGrad.setAttribute('id', 'fov-ray-gradient');
+  fillGrad.setAttribute('x1', '0%'); fillGrad.setAttribute('y1', '50%');
+  fillGrad.setAttribute('x2', '100%'); fillGrad.setAttribute('y2', '50%');
+  [{o:'0%',c:greenTrans},{o:'15%',c:greenFull},{o:'90%',c:greenFull},{o:'100%',c:greenTrans}].forEach(s=>{
+    const stop = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+    stop.setAttribute('offset', s.o); stop.setAttribute('stop-color', s.c);
+    fillGrad.appendChild(stop);
+  });
+  defs.appendChild(fillGrad);
+  const strokeGrad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+  strokeGrad.setAttribute('id', 'fov-ray-stroke-gradient');
+  strokeGrad.setAttribute('x1', '0%'); strokeGrad.setAttribute('y1', '50%');
+  strokeGrad.setAttribute('x2', '100%'); strokeGrad.setAttribute('y2', '50%');
+  [{o:'0%',c:greenTrans},{o:'15%',c:greenFull},{o:'90%',c:greenFull},{o:'100%',c:greenTrans}].forEach(s=>{
+    const stop = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+    stop.setAttribute('offset', s.o); stop.setAttribute('stop-color', s.c);
+    strokeGrad.appendChild(stop);
+  });
+  defs.appendChild(strokeGrad);
+  svg.appendChild(defs);
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   path.setAttribute('d', 'M 56 28 L 8 4 L 8 52 Z');
   path.setAttribute('fill', 'url(#fov-ray-gradient)');
-  path.setAttribute('stroke', 'rgba(60,120,200,0.95)');
+  path.setAttribute('stroke', 'url(#fov-ray-stroke-gradient)');
   path.setAttribute('stroke-width', '2');
   path.setAttribute('stroke-linejoin', 'round');
   svg.appendChild(path);
@@ -465,6 +478,31 @@ const EXTERIOR_STEPS = [
   { text: 'Hide minimap', highlight: 'mini-map-hide-bar' }
 ];
 
+function updateTutorialArrow(highlightId) {
+  const arrowSvg = document.getElementById('tutorial-arrow');
+  const line = arrowSvg.querySelector('line');
+  if (!highlightId) {
+    arrowSvg.style.display = 'none';
+    return;
+  }
+  const el = document.getElementById(highlightId);
+  if (!el) { arrowSvg.style.display = 'none'; return; }
+  const r = el.getBoundingClientRect();
+  const cx = window.innerWidth / 2;
+  const cy = window.innerHeight / 2;
+  const tx = r.left + r.width / 2;
+  const ty = r.top + r.height / 2;
+  arrowSvg.setAttribute('viewBox', '0 0 ' + window.innerWidth + ' ' + window.innerHeight);
+  arrowSvg.setAttribute('width', '100%');
+  arrowSvg.setAttribute('height', '100%');
+  arrowSvg.setAttribute('preserveAspectRatio', 'none');
+  line.setAttribute('x1', cx);
+  line.setAttribute('y1', cy);
+  line.setAttribute('x2', tx);
+  line.setAttribute('y2', ty);
+  arrowSvg.style.display = 'block';
+}
+
 function startExteriorTutorial() {
   exteriorTutorialStep = 0;
   document.querySelectorAll('.tutorial-highlight').forEach(el => el.classList.remove('tutorial-highlight'));
@@ -475,7 +513,7 @@ function startExteriorTutorial() {
   overlay.onclick = advanceExteriorTutorial;
   skipEl.onclick = (e) => { e.stopPropagation(); advanceExteriorTutorial(); };
   textEl.textContent = EXTERIOR_STEPS[0].text;
-  textEl.style.marginBottom = '12px';
+  updateTutorialArrow(null);
 }
 
 function advanceExteriorTutorial() {
@@ -484,6 +522,7 @@ function advanceExteriorTutorial() {
   if (exteriorTutorialStep >= EXTERIOR_STEPS.length) {
     document.getElementById('tutorial-overlay').classList.remove('visible');
     document.getElementById('tutorial-overlay').onclick = null;
+    document.getElementById('tutorial-arrow').style.display = 'none';
     localStorage.setItem(TUTORIAL_EXTERIOR_KEY, '1');
     return;
   }
@@ -492,6 +531,9 @@ function advanceExteriorTutorial() {
   if (step.highlight) {
     const el = document.getElementById(step.highlight);
     if (el) el.classList.add('tutorial-highlight');
+    updateTutorialArrow(step.highlight);
+  } else {
+    updateTutorialArrow(null);
   }
 }
 
@@ -509,6 +551,7 @@ function showInteriorTutorial() {
 function closeInteriorTutorial() {
   document.getElementById('tutorial-overlay').classList.remove('visible');
   document.getElementById('tutorial-overlay').onclick = null;
+  document.getElementById('tutorial-arrow').style.display = 'none';
   localStorage.setItem(TUTORIAL_INTERIOR_KEY, '1');
 }
 
@@ -1087,7 +1130,7 @@ function createNavArrow(hotSpotDiv, args) {
       <polygon points="12,3 22,21 12,17 2,21" fill="rgba(255,255,255,0.85)" stroke="none"/>
     </svg>`;
   const tip = document.createElement('div');
-  tip.style.cssText = 'position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:rgba(10,10,10,0.9);border:1px solid #2a2a2a;color:#f0ede8;font-family:Rajdhani,sans-serif;font-size:0.62rem;letter-spacing:0.15em;padding:3px 8px;white-space:nowrap;text-transform:uppercase;pointer-events:none;';
+  tip.style.cssText = 'position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:rgba(10,10,10,0.9);border:1px solid #2a2a2a;color:#f0ede8;font-family:Courier,monospace;font-size:0.62rem;letter-spacing:0.15em;padding:3px 8px;white-space:nowrap;pointer-events:none;';
   tip.textContent = args.name;
   hotSpotDiv.appendChild(tip);
 }
