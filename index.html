@@ -298,7 +298,7 @@ function createEyeIcon() {
   return svg;
 }
 
-// Rotation indicator: SVG wedge — green, fill + stroke gradient (sine-like: hold ~100% halfway, drop to 0% in last ~10%)
+// Rotation indicator: green wedge, simple 100% at base to 0% at tip
 function createFovRaySvg() {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 56 56');
@@ -311,7 +311,7 @@ function createFovRaySvg() {
   fillGrad.setAttribute('id', 'fov-ray-gradient');
   fillGrad.setAttribute('x1', '0%'); fillGrad.setAttribute('y1', '50%');
   fillGrad.setAttribute('x2', '100%'); fillGrad.setAttribute('y2', '50%');
-  [{o:'0%',c:greenTrans},{o:'15%',c:greenFull},{o:'90%',c:greenFull},{o:'100%',c:greenTrans}].forEach(s=>{
+  [{o:'0%',c:greenTrans},{o:'100%',c:greenFull}].forEach(s=>{
     const stop = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
     stop.setAttribute('offset', s.o); stop.setAttribute('stop-color', s.c);
     fillGrad.appendChild(stop);
@@ -321,7 +321,7 @@ function createFovRaySvg() {
   strokeGrad.setAttribute('id', 'fov-ray-stroke-gradient');
   strokeGrad.setAttribute('x1', '0%'); strokeGrad.setAttribute('y1', '50%');
   strokeGrad.setAttribute('x2', '100%'); strokeGrad.setAttribute('y2', '50%');
-  [{o:'0%',c:greenTrans},{o:'15%',c:greenFull},{o:'90%',c:greenFull},{o:'100%',c:greenTrans}].forEach(s=>{
+  [{o:'0%',c:greenTrans},{o:'100%',c:greenFull}].forEach(s=>{
     const stop = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
     stop.setAttribute('offset', s.o); stop.setAttribute('stop-color', s.c);
     strokeGrad.appendChild(stop);
@@ -1334,10 +1334,15 @@ function renderMiniMapHotspots() {
 }
 
 function updateMiniMapFov(forceTrueNorth) {
+  const fov = document.getElementById('mini-map-fov');
+  if (viewMode !== 'interior') {
+    fov.style.visibility = 'hidden';
+    return;
+  }
+  fov.style.visibility = 'visible';
   if (!currentHotspot) return;
   const wrap = document.getElementById('mini-map');
   const img = document.getElementById('mini-map-img');
-  const fov = document.getElementById('mini-map-fov');
   if (!fov.querySelector('svg')) fov.appendChild(createFovRaySvg());
   const natW = img.naturalWidth || 1;
   const natH = img.naturalHeight || 1;
