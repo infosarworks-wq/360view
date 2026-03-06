@@ -148,6 +148,14 @@ body.interior-active.minimap-collapsed #back-btn.visible{bottom:72px;}
 #fade{position:fixed;inset:0;background:var(--black);opacity:0;pointer-events:none;z-index:600;transition:opacity 0.35s ease;}
 #fade.on{opacity:1;pointer-events:all;}
 
+/* Tutorial overlay — dim 50%, show once */
+#tutorial-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:400;display:none;align-items:flex-start;justify-content:center;padding:20px;box-sizing:border-box;}
+#tutorial-overlay.visible{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:80px;}
+#tutorial-overlay .tutorial-text{max-width:320px;text-align:center;font-size:0.85rem;letter-spacing:0.15em;color:var(--white);text-transform:uppercase;line-height:1.5;margin-bottom:12px;text-shadow:0 1px 4px rgba(0,0,0,0.8);}
+#tutorial-overlay .tutorial-skip{background:rgba(28,28,28,0.95);border:1px solid var(--border);color:var(--muted);font-family:var(--font-ui);font-size:0.7rem;letter-spacing:0.2em;padding:6px 14px;cursor:pointer;text-transform:uppercase;transition:border-color 0.2s,color 0.2s;}
+#tutorial-overlay .tutorial-skip:hover{border-color:var(--gold);color:var(--gold);}
+.tutorial-highlight{z-index:401 !important;box-shadow:0 0 0 4px var(--gold);border-radius:2px;}
+
 /* Custom pannellum hotspot arrows */
 .pnlm-container .nav-arrow-hs{
   width:50px;height:50px;
@@ -236,7 +244,7 @@ body.interior-active.minimap-collapsed #back-btn.visible{bottom:72px;}
       <div id="mini-map-fov"></div>
       <div id="mini-map-hotspots"></div>
       <button type="button" id="mini-map-expand" title="View full map" aria-label="View full map" onclick="openRooms()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2" width="20" height="20" rx="1"/><line x1="2" y1="8" x2="22" y2="8"/><line x1="2" y1="14" x2="22" y2="14"/><line x1="8" y1="2" x2="8" y2="22"/><line x1="14" y1="2" x2="14" y2="22"/></svg>
       </button>
     </div>
   </div>
@@ -248,6 +256,12 @@ body.interior-active.minimap-collapsed #back-btn.visible{bottom:72px;}
 
 <!-- FADE TRANSITION -->
 <div id="fade"></div>
+
+<!-- TUTORIAL (exterior + interior, show once) -->
+<div id="tutorial-overlay">
+  <p class="tutorial-text" id="tutorial-text"></p>
+  <button type="button" class="tutorial-skip" id="tutorial-skip">Skip</button>
+</div>
 
 <script>
 // ============================================================
@@ -282,17 +296,28 @@ function createEyeIcon() {
   return svg;
 }
 
-// Rotation indicator: SVG wedge — light center, darker edges (viewer angle)
+// Rotation indicator: SVG wedge — fade 100% at base (hotspot) to 0% at tip
 function createFovRaySvg() {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 56 56');
   svg.setAttribute('width', '56');
   svg.setAttribute('height', '56');
-  // Wedge: anchor at middle-right (56,28). Shape = triangle pointing left, ~90° fan
-  // Path: right-center (56,28) -> top-left -> bottom-left -> back to (56,28)
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  const grad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+  grad.setAttribute('id', 'fov-ray-gradient');
+  grad.setAttribute('x1', '0%'); grad.setAttribute('y1', '50%');
+  grad.setAttribute('x2', '100%'); grad.setAttribute('y2', '50%');
+  const stop1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+  stop1.setAttribute('offset', '0%');
+  stop1.setAttribute('stop-color', 'rgba(180,220,255,0)');
+  const stop2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+  stop2.setAttribute('offset', '100%');
+  stop2.setAttribute('stop-color', 'rgba(180,220,255,1)');
+  grad.appendChild(stop1); grad.appendChild(stop2);
+  defs.appendChild(grad); svg.appendChild(defs);
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   path.setAttribute('d', 'M 56 28 L 8 4 L 8 52 Z');
-  path.setAttribute('fill', 'rgba(180,220,255,0.5)');
+  path.setAttribute('fill', 'url(#fov-ray-gradient)');
   path.setAttribute('stroke', 'rgba(60,120,200,0.95)');
   path.setAttribute('stroke-width', '2');
   path.setAttribute('stroke-linejoin', 'round');
@@ -314,6 +339,8 @@ let currentMeta   = null;
 let currentImg    = 1;    // 1-indexed
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 5;
+const TUTORIAL_EXTERIOR_KEY = 'archviz_tutorial_exterior_done';
+const TUTORIAL_INTERIOR_KEY = 'archviz_tutorial_interior_done';
 const DOUBLE_CLICK_ZOOM = 3;
 let zoomLevel    = 1;   // 1..5; >1 = zoomed pan mode
 let zoomCache    = {};
@@ -342,6 +369,7 @@ let panBaseY   = 0;
 
 let pinchStartDist = 0;
 let pinchStartZoom = 1;
+let isTouchDrag = false;
 
 // Logo / gaze
 let logoConfig = null;
@@ -392,20 +420,10 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   setLoader(10, 'Locating project');
 
-  // Load floors: optional project.json with { "floors": ["basement", "ground", "top_deck", ...] }, else floor1 + floor2..10
-  const firstFromManifest = await loadProjectManifest();
-  if (firstFromManifest !== null) {
-    currentFloor = firstFromManifest;
-  } else {
-    const ok = await loadFloorMeta('floor1');
-    if (!ok) { showError('load', bucketUrl(`${projectName}/floor1/floor1_metadata.json`)); return; }
-    currentFloor = 'floor1';
-    for (let i = 2; i <= 10; i++) {
-      const key = `floor${i}`;
-      const loaded = await loadFloorMeta(key);
-      if (!loaded) break;
-    }
-  }
+  // Load only floor1 metadata from floor folder (no project.json, no floor2+)
+  const ok = await loadFloorMeta('floor1');
+  if (!ok) { showError('load', bucketUrl(`${projectName}/floor1/floor1_metadata.json`)); return; }
+  currentFloor = 'floor1';
   setLoader(70, 'Building interface');
   buildFloorSelector();
   buildRowDots();
@@ -416,6 +434,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   setTimeout(() => {
     document.getElementById('loading-screen').classList.add('hidden');
     document.getElementById('app').classList.add('visible');
+    if (!localStorage.getItem(TUTORIAL_EXTERIOR_KEY)) startExteriorTutorial();
   }, 600);
 
   // Hide hint after 5s
@@ -437,6 +456,63 @@ function showError(reason, attemptedUrl) {
 }
 
 // ============================================================
+// TUTORIAL (exterior 3 steps, interior 1 step; show once via localStorage)
+// ============================================================
+let exteriorTutorialStep = 0;
+const EXTERIOR_STEPS = [
+  { text: 'Drag to rotate and pinch/scroll to zoom', highlight: null },
+  { text: 'Access interior view by selecting the hotspots on the minimap', highlight: 'mini-map' },
+  { text: 'Hide minimap', highlight: 'mini-map-hide-bar' }
+];
+
+function startExteriorTutorial() {
+  exteriorTutorialStep = 0;
+  document.querySelectorAll('.tutorial-highlight').forEach(el => el.classList.remove('tutorial-highlight'));
+  const overlay = document.getElementById('tutorial-overlay');
+  const textEl = document.getElementById('tutorial-text');
+  const skipEl = document.getElementById('tutorial-skip');
+  overlay.classList.add('visible');
+  overlay.onclick = advanceExteriorTutorial;
+  skipEl.onclick = (e) => { e.stopPropagation(); advanceExteriorTutorial(); };
+  textEl.textContent = EXTERIOR_STEPS[0].text;
+  textEl.style.marginBottom = '12px';
+}
+
+function advanceExteriorTutorial() {
+  document.querySelectorAll('.tutorial-highlight').forEach(el => el.classList.remove('tutorial-highlight'));
+  exteriorTutorialStep++;
+  if (exteriorTutorialStep >= EXTERIOR_STEPS.length) {
+    document.getElementById('tutorial-overlay').classList.remove('visible');
+    document.getElementById('tutorial-overlay').onclick = null;
+    localStorage.setItem(TUTORIAL_EXTERIOR_KEY, '1');
+    return;
+  }
+  const step = EXTERIOR_STEPS[exteriorTutorialStep];
+  document.getElementById('tutorial-text').textContent = step.text;
+  if (step.highlight) {
+    const el = document.getElementById(step.highlight);
+    if (el) el.classList.add('tutorial-highlight');
+  }
+}
+
+function showInteriorTutorial() {
+  if (localStorage.getItem(TUTORIAL_INTERIOR_KEY)) return;
+  const overlay = document.getElementById('tutorial-overlay');
+  const textEl = document.getElementById('tutorial-text');
+  const skipEl = document.getElementById('tutorial-skip');
+  textEl.textContent = 'Drag to rotate and pinch/scroll to zoom';
+  overlay.classList.add('visible');
+  overlay.onclick = closeInteriorTutorial;
+  skipEl.onclick = (e) => { e.stopPropagation(); closeInteriorTutorial(); };
+}
+
+function closeInteriorTutorial() {
+  document.getElementById('tutorial-overlay').classList.remove('visible');
+  document.getElementById('tutorial-overlay').onclick = null;
+  localStorage.setItem(TUTORIAL_INTERIOR_KEY, '1');
+}
+
+// ============================================================
 // FLOOR DISCOVERY (supports arbitrary floor keys via project.json or floor1, floor2...)
 // ============================================================
 async function loadFloorMeta(floorKey) {
@@ -447,22 +523,6 @@ async function loadFloorMeta(floorKey) {
     floorData[floorKey] = await r.json();
     return true;
   } catch(e) { return false; }
-}
-
-/** Optional: project.json with { "floors": ["floor1", "basement", "top_deck", ...] }. Loads each and returns first key or null. */
-async function loadProjectManifest() {
-  try {
-    const r = await fetch(bucketUrl(`${projectName}/project.json`));
-    if (!r.ok) return null;
-    const data = await r.json();
-    const list = data && Array.isArray(data.floors) ? data.floors : null;
-    if (!list || list.length === 0) return null;
-    for (const key of list) {
-      if (typeof key !== 'string') continue;
-      await loadFloorMeta(key);
-    }
-    return list[0];
-  } catch(e) { return null; }
 }
 
 function buildFloorSelector() {
@@ -684,6 +744,7 @@ aerialEl.addEventListener('touchstart', e => {
     pinchStartZoom = zoomLevel;
   } else if (e.touches.length === 1) {
     e.preventDefault();
+    isTouchDrag = true;
     onDragStart(e.touches[0]);
   }
 }, { passive: false });
@@ -727,6 +788,7 @@ window.addEventListener('touchmove', e => {
 window.addEventListener('mouseup', onDragEnd);
 window.addEventListener('touchend', e => {
   if (e.touches.length < 2) pinchStartDist = 0;
+  if (e.touches.length === 0) isTouchDrag = false;
   onDragEnd();
 });
 
@@ -736,41 +798,30 @@ aerialEl.addEventListener('wheel', onAerialWheel, { passive: false });
 
 function onAerialWheel(e) {
   e.preventDefault();
-  if (zoomLevel > 1) {
-    const delta = e.deltaY > 0 ? -1 : 1;
-    const next = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomLevel + delta));
-    if (next !== zoomLevel) {
-      zoomLevel = next;
-      if (zoomLevel === 1) {
-        panOffsetX = 0;
-        panOffsetY = 0;
-        document.getElementById('zoom-bar').classList.remove('visible');
-        const img = document.getElementById('aerial-img');
-        img.classList.remove('pan-mode');
-        loadAerialImage(currentImg, false);
-        renderHotspots(currentImg);
-      } else {
-        if (zoomLevel === 2) {
-          document.getElementById('zoom-bar').classList.add('visible');
-          document.getElementById('hotspot-layer').innerHTML = '';
-          document.getElementById('hint').classList.add('gone');
-          document.getElementById('aerial-img').classList.add('pan-mode');
-        }
-        loadAerialImage(currentImg, true);
+  const delta = e.deltaY > 0 ? -1 : 1;
+  const next = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomLevel + delta));
+  if (next !== zoomLevel) {
+    zoomLevel = next;
+    if (zoomLevel === 1) {
+      panOffsetX = 0;
+      panOffsetY = 0;
+      document.getElementById('zoom-bar').classList.remove('visible');
+      const img = document.getElementById('aerial-img');
+      img.classList.remove('pan-mode');
+      loadAerialImage(currentImg, false);
+      renderHotspots(currentImg);
+    } else {
+      if (zoomLevel === 2) {
+        document.getElementById('zoom-bar').classList.add('visible');
+        document.getElementById('hotspot-layer').innerHTML = '';
+        document.getElementById('hint').classList.add('gone');
+        document.getElementById('aerial-img').classList.add('pan-mode');
       }
-      applyZoomPan();
-      updateZoomBadge();
+      loadAerialImage(currentImg, true);
     }
-    return;
+    applyZoomPan();
+    updateZoomBadge();
   }
-  const delta = e.deltaY > 0 ? 1 : -1;
-  let next = currentImg + delta;
-  if (next < 1) next = TOTAL_IMAGES;
-  if (next > TOTAL_IMAGES) next = 1;
-  currentImg = next;
-  currentRow = Math.floor((currentImg - 1) / COLS);
-  loadAerialImage(currentImg);
-  updateRowDots();
 }
 
 function onDragStart(e) {
@@ -804,8 +855,8 @@ function onDragMove(e) {
   const dx = e.clientX - dragStartX;
   const dy = e.clientY - dragStartY;
 
-  // Same sensitivity for horizontal and vertical (pixels per image step); 50% faster rotation
-  const sensitivity = 53;
+  // Sensitivity: phone 50% faster (35px), desktop 53px per image step
+  const sensitivity = isTouchDrag ? 35 : 53;
 
   // Horizontal → column
   let colDelta = -Math.round(dx / sensitivity);
@@ -914,6 +965,7 @@ function enterRoom(hotspot, preserveHeading) {
     setTimeout(function() {
       if (document.getElementById('mini-map').classList.contains('visible')) renderMiniMapHotspots();
     }, 150);
+    setTimeout(showInteriorTutorial, 500);
   });
 }
 
@@ -1044,6 +1096,10 @@ function createNavArrow(hotSpotDiv, args) {
 // BACK TO AERIAL
 // ============================================================
 function goBackToAerial() {
+  if (viewMode === 'map') {
+    closeMapView();
+    return;
+  }
   fadeTransition(() => {
     stopGazeMonitor();
     if (viewer) { try { viewer.destroy(); } catch(e){} viewer = null; }
@@ -1059,6 +1115,14 @@ function goBackToAerial() {
     viewMode = 'exterior';
     renderHotspots(currentImg);
   });
+}
+
+function closeMapView() {
+  viewMode = 'exterior';
+  document.getElementById('map-view').classList.remove('visible');
+  document.getElementById('aerial-view').classList.remove('hidden');
+  document.getElementById('back-btn').classList.remove('visible');
+  showMiniMap();
 }
 
 // ============================================================
