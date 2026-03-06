@@ -89,9 +89,11 @@ body.interior-active.minimap-collapsed #back-btn.visible{bottom:72px;}
 #hint.gone{opacity:0;}
 
 /* MAP VIEW */
-#map-view{position:fixed;inset:0;display:none;background:var(--black);}
+#map-view{position:fixed;inset:0;display:none;background:var(--black);cursor:grab;}
 #map-view.visible{display:block;}
-#map-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;}
+#map-view.map-pan-active{cursor:grabbing;}
+#map-zoom-wrap{position:absolute;inset:0;overflow:hidden;transform-origin:center center;}
+#map-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;}
 #map-hotspot-layer{position:absolute;inset:0;pointer-events:none;}
 .map-hs{position:absolute;width:20px;height:20px;transform:translate(-50%,-50%);cursor:pointer;pointer-events:all;}
 .map-hs img,.map-hs svg{width:100%;height:100%;filter:drop-shadow(0 0 8px rgba(50,200,50,0.6));}
@@ -150,7 +152,7 @@ body.interior-active.minimap-collapsed #back-btn.visible{bottom:72px;}
 /* Tutorial overlay — dim 50%, show once; text centered, arrow to highlight */
 #tutorial-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:400;display:none;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;}
 #tutorial-overlay.visible{display:flex;flex-direction:column;align-items:center;justify-content:center;}
-#tutorial-overlay .tutorial-text{max-width:340px;text-align:center;font-size:0.95rem;letter-spacing:0.08em;color:#fff;line-height:1.5;margin-bottom:14px;text-shadow:0 0 20px rgba(255,255,255,0.4),0 2px 8px rgba(0,0,0,0.9);font-weight:500;}
+#tutorial-overlay .tutorial-text{max-width:340px;text-align:center;font-size:0.95rem;letter-spacing:0.08em;color:#ffffff;line-height:1.5;margin-bottom:14px;text-shadow:0 0 20px rgba(255,255,255,0.4),0 2px 8px rgba(0,0,0,0.9);font-weight:500;}
 #tutorial-overlay .tutorial-skip{background:rgba(28,28,28,0.95);border:1px solid var(--border);color:var(--muted);font-family:var(--font-ui);font-size:0.7rem;letter-spacing:0.2em;padding:6px 14px;cursor:pointer;transition:border-color 0.2s,color 0.2s;}
 #tutorial-overlay .tutorial-skip:hover{border-color:var(--accent);color:var(--accent);}
 #tutorial-arrow{position:fixed;inset:0;pointer-events:none;z-index:399;display:none;}
@@ -228,8 +230,10 @@ body.interior-active.minimap-collapsed #back-btn.visible{bottom:72px;}
 
   <!-- MAP VIEW -->
   <div id="map-view">
-    <img id="map-img" src="" alt="" draggable="false">
-    <div id="map-hotspot-layer"></div>
+    <div id="map-zoom-wrap">
+      <img id="map-img" src="" alt="" draggable="false">
+      <div id="map-hotspot-layer"></div>
+    </div>
   </div>
 
   <!-- MINI MAP: shown on aerial and interior; hide bar on top, restore bar when collapsed -->
@@ -384,6 +388,11 @@ let panBaseY   = 0;
 let pinchStartDist = 0;
 let pinchStartZoom = 1;
 let isTouchDrag = false;
+
+// Map view zoom/pan (full-screen map; hotspots stay fixed with image)
+let mapZoomLevel = 1;
+let mapPanX = 0, mapPanY = 0;
+let mapPanActive = false, mapPanStartX = 0, mapPanStartY = 0, mapPanBaseX = 0, mapPanBaseY = 0;
 
 // Logo / gaze
 let logoConfig = null;
@@ -542,7 +551,7 @@ function showError(reason) {
 // ============================================================
 let exteriorTutorialStep = 0;
 const EXTERIOR_STEPS = [
-  { text: 'Drag to rotate and pinch/scroll to zoom', highlight: null },
+  { text: 'Drag to rotate. Double-click to zoom in; scroll or pinch to zoom 1–5×. Pan when zoomed.', highlight: null },
   { text: 'Access interior view by selecting the hotspots on the minimap', highlight: 'mini-map' },
   { text: 'Hide minimap', highlight: 'mini-map-hide-bar' }
 ];
@@ -888,6 +897,9 @@ window.addEventListener('resize', () => {
   if (document.getElementById('mini-map').classList.contains('visible')) {
     renderMiniMapHotspots();
   }
+  if (viewMode === 'map' && document.getElementById('map-view').classList.contains('visible')) {
+    renderMapHotspotsFull();
+  }
 });
 
 // ============================================================
@@ -954,6 +966,19 @@ window.addEventListener('touchend', e => {
 aerialEl.addEventListener('dblclick', onDoubleClick);
 
 aerialEl.addEventListener('wheel', onAerialWheel, { passive: false });
+
+// Map view: zoom (wheel) and pan (drag when zoomed); hotspots stay fixed with image
+const mapViewEl = document.getElementById('map-view');
+const mapZoomWrap = document.getElementById('map-zoom-wrap');
+if (mapViewEl) mapViewEl.addEventListener('wheel', onMapWheel, { passive: false });
+if (mapZoomWrap) {
+  mapZoomWrap.addEventListener('mousedown', onMapPanStart);
+  mapZoomWrap.addEventListener('touchstart', e => { if (e.touches.length === 1) onMapPanStart(e); }, { passive: true });
+}
+window.addEventListener('mousemove', e => { if (mapPanActive) onMapPanMove(e); });
+window.addEventListener('mouseup', onMapPanEnd);
+window.addEventListener('touchmove', e => { if (mapPanActive && e.touches.length === 1) { e.preventDefault(); onMapPanMove(e); } }, { passive: false });
+window.addEventListener('touchend', e => { if (e.touches.length === 0) onMapPanEnd(); });
 
 function onAerialWheel(e) {
   e.preventDefault();
@@ -1334,9 +1359,62 @@ function openRooms() {
   document.getElementById('back-btn').classList.add('visible');
   document.getElementById('mini-map').classList.remove('visible');
 
+  mapZoomLevel = 1;
+  mapPanX = 0;
+  mapPanY = 0;
+  applyMapZoomPan();
   const img = document.getElementById('map-img');
   const path = currentMeta.map_image_path || `${projectName}/${currentFloor}/map`;
   tryLoadImage(img, path, () => renderMapHotspotsFull());
+}
+
+const MAP_MIN_ZOOM = 1;
+const MAP_MAX_ZOOM = 5;
+function applyMapZoomPan() {
+  const wrap = document.getElementById('map-zoom-wrap');
+  if (!wrap) return;
+  if (mapZoomLevel <= 1) {
+    wrap.style.transform = 'scale(1) translate(0, 0)';
+    document.getElementById('map-view').classList.remove('map-pan-active');
+    return;
+  }
+  wrap.style.transform = `scale(${mapZoomLevel}) translate(${-mapPanX / mapZoomLevel}px, ${-mapPanY / mapZoomLevel}px)`;
+}
+
+function onMapWheel(e) {
+  if (viewMode !== 'map' || !document.getElementById('map-view').classList.contains('visible')) return;
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? -1 : 1;
+  const next = Math.max(MAP_MIN_ZOOM, Math.min(MAP_MAX_ZOOM, mapZoomLevel + delta));
+  if (next !== mapZoomLevel) {
+    mapZoomLevel = next;
+    if (mapZoomLevel === 1) { mapPanX = 0; mapPanY = 0; }
+    applyMapZoomPan();
+  }
+}
+
+function onMapPanStart(e) {
+  if (viewMode !== 'map' || mapZoomLevel <= 1) return;
+  if (e.target.closest('.map-hs')) return;
+  mapPanActive = true;
+  document.getElementById('map-view').classList.add('map-pan-active');
+  const t = e.touches ? e.touches[0] : e;
+  mapPanStartX = t.clientX;
+  mapPanStartY = t.clientY;
+  mapPanBaseX = mapPanX;
+  mapPanBaseY = mapPanY;
+}
+function onMapPanMove(e) {
+  if (!mapPanActive) return;
+  e.preventDefault();
+  const t = e.touches ? e.touches[0] : e;
+  mapPanX = mapPanBaseX + (t.clientX - mapPanStartX);
+  mapPanY = mapPanBaseY + (t.clientY - mapPanStartY);
+  applyMapZoomPan();
+}
+function onMapPanEnd() {
+  mapPanActive = false;
+  document.getElementById('map-view').classList.remove('map-pan-active');
 }
 
 function renderMapHotspotsFull() {
