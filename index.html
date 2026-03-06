@@ -1161,6 +1161,8 @@ function loadVersion(hotspot, vNum, preserveHeading) {
     if (viewer) {
       viewer.on('mousedown', trackGaze);
       viewer.on('touchstart', trackGaze);
+      startGazeMonitor();
+      updateMiniMapFov();
     }
   });
 }
