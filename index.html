@@ -400,11 +400,60 @@ function imgIndex(row, col) {
   return row * COLS + col + 1;
 }
 function imgFilename(idx) {
-  // Current bucket uses 1.jpg ... 120.jpg naming
-  return String(idx) + '.jpg';
+  return String(idx);
 }
+const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp'];
+
 function bucketUrl(path) {
   return `${BUCKET_BASE}/${path}`;
+}
+
+function getImageBase(path) {
+  return path.replace(/\.(png|jpg|jpeg|webp)$/i, '') || path;
+}
+
+function imageCandidates(pathOrBase) {
+  const list = Array.isArray(pathOrBase) ? pathOrBase : [pathOrBase];
+  const out = [];
+  for (const p of list) {
+    const base = getImageBase(p);
+    const hasExt = /\.(png|jpg|jpeg|webp)$/i.test(p);
+    let exts = [...IMAGE_EXTENSIONS];
+    if (hasExt) {
+      const m = p.match(/\.([a-zA-Z0-9]+)$/i);
+      if (m) exts = [m[1].toLowerCase(), ...exts.filter(e => e !== m[1].toLowerCase())];
+    }
+    exts.forEach(ext => { out.push(base + '.' + ext); });
+  }
+  return out;
+}
+
+function tryLoadImage(img, pathOrBase, onload) {
+  const paths = imageCandidates(pathOrBase);
+  let i = 0;
+  function attempt() {
+    if (i >= paths.length) return;
+    const url = bucketUrl(paths[i]);
+    img.onload = function() { img.onload = null; img.onerror = null; if (onload) onload(); };
+    img.onerror = function() { img.onload = null; img.onerror = null; i++; attempt(); };
+    img.src = url;
+  }
+  attempt();
+}
+
+function tryResolveImageUrl(pathOrBase) {
+  const paths = imageCandidates(pathOrBase);
+  return new Promise(resolve => {
+    let i = 0;
+    function attempt() {
+      if (i >= paths.length) { resolve(null); return; }
+      const img = new Image();
+      img.onload = () => resolve(bucketUrl(paths[i]));
+      img.onerror = () => { i++; attempt(); };
+      img.src = bucketUrl(paths[i]);
+    }
+    attempt();
+  });
 }
 function setLoader(pct, status) {
   document.getElementById('loader-bar').style.width = pct + '%';
@@ -642,46 +691,38 @@ function showAerialView() {
   showMiniMap();
 }
 
-function getAerialPath(idx, hiRes) {
-  // Preferred: 120-image exterior sprite, either from metadata or convention
+function getAerialPathBase(idx, hiRes) {
   const av = currentMeta && currentMeta.aerial_view;
   if (av && (av.low_res_path || av.high_res_path)) {
     const base = hiRes
       ? (av.high_res_path || av.low_res_path)
       : (av.low_res_path || av.high_res_path);
-    return bucketUrl(base + imgFilename(idx));
+    const folder = base.replace(/\/$/, '');
+    return [folder + '/' + imgFilename(idx), folder + '/' + String(idx).padStart(4, '0')];
   }
-  // Conventional layout: PROJECT/floorX/aerial_view/low_res|high_res/0001.png
-  const derivedBase = `${projectName}/${currentFloor}/aerial_view/${hiRes ? 'high_res' : 'low_res'}/`;
-  return bucketUrl(derivedBase + imgFilename(idx));
+  const folder = `${projectName}/${currentFloor}/aerial_view/${hiRes ? 'high_res' : 'low_res'}`;
+  return [folder + '/' + imgFilename(idx), folder + '/' + String(idx).padStart(4, '0')];
 }
 
 function loadAerialImage(idx, hiRes = false) {
   const img = document.getElementById('aerial-img');
-  const src = getAerialPath(idx, hiRes);
-
   if (hiRes && zoomCache[idx]) {
     img.src = zoomCache[idx];
-  } else {
-    img.src = src;
-    if (hiRes) {
-      img.onload = () => { zoomCache[idx] = src; };
-    }
+    if (!hiRes) renderHotspots(idx);
+    return;
   }
-
-  if (!hiRes) renderHotspots(idx);
+  const base = getAerialPathBase(idx, hiRes);
+  tryLoadImage(img, base, () => {
+    if (hiRes) zoomCache[idx] = img.src;
+    if (!hiRes) renderHotspots(idx);
+  });
 }
 
 function preloadAerialImages() {
   const promises = [];
   for (let i = 1; i <= TOTAL_IMAGES; i++) {
-    const src = getAerialPath(i, false);
-    promises.push(new Promise(resolve => {
-      const img = new Image();
-      img.onload = () => resolve();
-      img.onerror = () => resolve();
-      img.src = src;
-    }));
+    const base = getAerialPathBase(i, false);
+    promises.push(tryResolveImageUrl(base).then(() => {}));
   }
   return Promise.all(promises);
 }
@@ -1066,9 +1107,6 @@ function loadVersion(hotspot, vNum, preserveHeading) {
   const verData = hotspot.interior_images.find(v => v.version === vNum);
   if (!verData) return;
 
-  // Build full image URL
-  const imgUrl = bucketUrl(verData.image_path);
-
   // Build hotspots for navigation arrows
   const hotspotsCfg = {};
   if (hotspot.navigation_arrows) {
@@ -1104,9 +1142,11 @@ function loadVersion(hotspot, vNum, preserveHeading) {
   if (viewer) { try { viewer.destroy(); } catch(e){} viewer = null; }
   document.getElementById('pannellum-container').innerHTML = '';
 
-  viewer = pannellum.viewer('pannellum-container', {
-    type:            'equirectangular',
-    panorama:        imgUrl,
+  tryResolveImageUrl(verData.image_path).then(imgUrl => {
+    if (!imgUrl) return;
+    viewer = pannellum.viewer('pannellum-container', {
+      type:            'equirectangular',
+      panorama:        imgUrl,
     autoLoad:        true,
     showControls:    false,
     compass:         false,
@@ -1118,12 +1158,11 @@ function loadVersion(hotspot, vNum, preserveHeading) {
     hotSpots:        Object.values(hotspotsCfg),
     backgroundColor: [10, 10, 10],
   });
-
-  // Gaze detection
-  if (viewer) {
-    viewer.on('mousedown', trackGaze);
-    viewer.on('touchstart', trackGaze);
-  }
+    if (viewer) {
+      viewer.on('mousedown', trackGaze);
+      viewer.on('touchstart', trackGaze);
+    }
+  });
 }
 
 function createNavArrow(hotSpotDiv, args) {
@@ -1222,8 +1261,8 @@ function openRooms() {
   document.getElementById('mini-map').classList.remove('visible');
 
   const img = document.getElementById('map-img');
-  img.src = bucketUrl(currentMeta.map_image_path || `${projectName}/${currentFloor}/map.png`);
-  img.onload = () => renderMapHotspotsFull();
+  const path = currentMeta.map_image_path || `${projectName}/${currentFloor}/map`;
+  tryLoadImage(img, path, () => renderMapHotspotsFull());
 }
 
 function renderMapHotspotsFull() {
@@ -1279,11 +1318,11 @@ function showMiniMap() {
   wrap.classList.add('visible');
   wrap.classList.toggle('minimap-collapsed', minimapCollapsed);
   document.body.classList.toggle('minimap-collapsed', minimapCollapsed);
-  img.src = bucketUrl(currentMeta.minimap_image_path || `${projectName}/${currentFloor}/minimap.png`);
-  img.onload = () => {
+  const path = currentMeta.minimap_image_path || `${projectName}/${currentFloor}/minimap`;
+  tryLoadImage(img, path, () => {
     renderMiniMapHotspots();
     requestAnimationFrame(() => requestAnimationFrame(renderMiniMapHotspots));
-  };
+  });
 }
 
 function getMapCoords(hs) {
