@@ -1222,7 +1222,7 @@ function openRooms() {
   document.getElementById('mini-map').classList.remove('visible');
 
   const img = document.getElementById('map-img');
-  img.src = bucketUrl(currentMeta.map_image_path || `${projectName}/${currentFloor}/map.jpg`);
+  img.src = bucketUrl(currentMeta.map_image_path || `${projectName}/${currentFloor}/map.png`);
   img.onload = () => renderMapHotspotsFull();
 }
 
@@ -1272,13 +1272,14 @@ function setMinimapCollapsed(collapsed) {
 }
 
 function showMiniMap() {
-  if (!currentMeta || !currentMeta.map_image_path) return;
+  const hasMap = currentMeta && (currentMeta.map_image_path || currentMeta.minimap_image_path);
+  if (!hasMap) return;
   const wrap = document.getElementById('mini-map');
   const img = document.getElementById('mini-map-img');
   wrap.classList.add('visible');
   wrap.classList.toggle('minimap-collapsed', minimapCollapsed);
   document.body.classList.toggle('minimap-collapsed', minimapCollapsed);
-  img.src = bucketUrl(currentMeta.map_image_path || `${projectName}/${currentFloor}/map.jpg`);
+  img.src = bucketUrl(currentMeta.minimap_image_path || `${projectName}/${currentFloor}/minimap.png`);
   img.onload = () => {
     renderMiniMapHotspots();
     requestAnimationFrame(() => requestAnimationFrame(renderMiniMapHotspots));
