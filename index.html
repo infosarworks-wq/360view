@@ -407,6 +407,17 @@ let logoConfig = null;
 let gazeTimer  = null;
 let viewMode   = 'exterior'; // 'exterior' | 'map' | 'interior'
 let headingOffset = 0;       // yaw - true_north for current view
+let viewportMetaOriginal = null;
+function setMapViewportLock(lock) {
+  const meta = document.querySelector('meta[name=viewport]');
+  if (!meta) return;
+  if (lock) {
+    if (viewportMetaOriginal === null) viewportMetaOriginal = meta.getAttribute('content') || 'width=device-width, initial-scale=1.0';
+    meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+  } else {
+    meta.setAttribute('content', viewportMetaOriginal || 'width=device-width, initial-scale=1.0');
+  }
+}
 let minimapCollapsed = false;
 let aerialFormat = null;     // { lowResBasePath, highResBasePath, ext, style: 'plain'|'pad4' } set after first aerial load
 
@@ -1176,6 +1187,7 @@ function enterRoom(hotspot, preserveHeading) {
 
 function doEnterRoomTransition(hotspot, preserveHeading) {
   fadeTransition(() => {
+    if (viewMode === 'map') setMapViewportLock(false);
     viewMode = 'interior';
     document.getElementById('aerial-view').classList.add('hidden');
     document.getElementById('map-view').classList.remove('visible');
@@ -1347,6 +1359,7 @@ function goBackToAerial() {
 }
 
 function closeMapView() {
+  setMapViewportLock(false);
   resetMapZoom();
   viewMode = 'exterior';
   document.getElementById('map-view').classList.remove('visible');
@@ -1396,6 +1409,7 @@ document.getElementById('aerial-img').addEventListener('load', () => {
 function openRooms() {
   if (!currentMeta || !currentMeta.map_image_path) return;
   viewMode = 'map';
+  setMapViewportLock(true);
   document.getElementById('aerial-view').classList.add('hidden');
   document.getElementById('map-view').classList.add('visible');
   document.getElementById('interior-view').classList.remove('visible');
@@ -1420,14 +1434,19 @@ function applyMapZoomPan() {
   const wrap = document.getElementById('map-zoom-wrap');
   const layer = document.getElementById('map-hotspot-layer');
   if (!wrap) return;
+  const scale = mapZoomLevel <= 1 ? 1 : 1 / mapZoomLevel;
   if (mapZoomLevel <= 1) {
     wrap.style.transform = 'scale(1) translate(0, 0)';
-    if (layer) layer.style.transform = 'scale(1)';
     document.getElementById('map-view').classList.remove('map-pan-active');
-    return;
+  } else {
+    wrap.style.transform = `scale(${mapZoomLevel}) translate(${-mapPanX / mapZoomLevel}px, ${-mapPanY / mapZoomLevel}px)`;
   }
-  wrap.style.transform = `scale(${mapZoomLevel}) translate(${-mapPanX / mapZoomLevel}px, ${-mapPanY / mapZoomLevel}px)`;
-  if (layer) layer.style.transform = `scale(${1 / mapZoomLevel})`;
+  if (layer) {
+    layer.style.transform = '';
+    layer.querySelectorAll('.map-hs').forEach(el => {
+      el.style.transform = `translate(-50%,-50%) scale(${scale})`;
+    });
+  }
 }
 function resetMapZoom() {
   mapZoomLevel = 1;
