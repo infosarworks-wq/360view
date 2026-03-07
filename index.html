@@ -89,7 +89,7 @@ body.interior-active.minimap-collapsed #back-btn.visible{bottom:72px;}
 #hint.gone{opacity:0;}
 
 /* MAP VIEW */
-#map-view{position:fixed;inset:0;display:none;background:var(--black);cursor:grab;}
+#map-view{position:fixed;inset:0;display:none;background:var(--black);cursor:grab;touch-action:none;}
 #map-view.visible{display:block;}
 #map-view.map-pan-active{cursor:grabbing;}
 #map-back-btn{position:absolute;top:16px;left:16px;z-index:30;display:flex;align-items:center;gap:8px;background:rgba(10,10,10,0.9);border:1px solid var(--border);color:var(--white);font-family:var(--font-ui);font-size:0.72rem;letter-spacing:0.18em;padding:8px 18px;cursor:pointer;transition:border-color 0.2s,color 0.2s;}
@@ -97,7 +97,7 @@ body.interior-active.minimap-collapsed #back-btn.visible{bottom:72px;}
 #map-back-btn svg{width:18px;height:18px;flex-shrink:0;}
 #map-zoom-wrap{position:absolute;inset:0;overflow:hidden;transform-origin:center center;}
 #map-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;}
-#map-hotspot-layer{position:absolute;inset:0;pointer-events:none;}
+#map-hotspot-layer{position:absolute;inset:0;pointer-events:none;transform-origin:center center;}
 .map-hs{position:absolute;width:20px;height:20px;transform:translate(-50%,-50%);cursor:pointer;pointer-events:all;}
 .map-hs img,.map-hs svg{width:100%;height:100%;filter:drop-shadow(0 0 8px rgba(50,200,50,0.6));}
 
@@ -400,6 +400,7 @@ let isTouchDrag = false;
 let mapZoomLevel = 1;
 let mapPanX = 0, mapPanY = 0;
 let mapPanActive = false, mapPanStartX = 0, mapPanStartY = 0, mapPanBaseX = 0, mapPanBaseY = 0;
+let mapPinchStartDist = 0, mapPinchStartZoom = 1;
 
 // Logo / gaze
 let logoConfig = null;
@@ -980,12 +981,34 @@ const mapZoomWrap = document.getElementById('map-zoom-wrap');
 if (mapViewEl) mapViewEl.addEventListener('wheel', onMapWheel, { passive: false });
 if (mapZoomWrap) {
   mapZoomWrap.addEventListener('mousedown', onMapPanStart);
-  mapZoomWrap.addEventListener('touchstart', e => { if (e.touches.length === 1) onMapPanStart(e); }, { passive: true });
+  mapZoomWrap.addEventListener('touchstart', e => {
+    if (e.touches.length === 2 && viewMode === 'map') {
+      mapPinchStartDist = Math.hypot(e.touches[1].clientX - e.touches[0].clientX, e.touches[1].clientY - e.touches[0].clientY);
+      mapPinchStartZoom = mapZoomLevel;
+    } else if (e.touches.length === 1) onMapPanStart(e);
+  }, { passive: true });
 }
 window.addEventListener('mousemove', e => { if (mapPanActive) onMapPanMove(e); });
 window.addEventListener('mouseup', onMapPanEnd);
-window.addEventListener('touchmove', e => { if (mapPanActive && e.touches.length === 1) { e.preventDefault(); onMapPanMove(e); } }, { passive: false });
-window.addEventListener('touchend', e => { if (e.touches.length === 0) onMapPanEnd(); });
+window.addEventListener('touchmove', e => {
+  if (viewMode === 'map' && e.touches.length === 2 && mapPinchStartDist > 0) {
+    e.preventDefault();
+    const dist = Math.hypot(e.touches[1].clientX - e.touches[0].clientX, e.touches[1].clientY - e.touches[0].clientY);
+    const scale = dist / mapPinchStartDist;
+    const next = Math.max(MAP_MIN_ZOOM, Math.min(MAP_MAX_ZOOM, mapPinchStartZoom * scale));
+    if (next !== mapZoomLevel) {
+      mapZoomLevel = next;
+      if (mapZoomLevel === 1) { mapPanX = 0; mapPanY = 0; }
+      applyMapZoomPan();
+    }
+    return;
+  }
+  if (mapPanActive && e.touches.length === 1) { e.preventDefault(); onMapPanMove(e); }
+}, { passive: false });
+window.addEventListener('touchend', e => {
+  if (e.touches.length < 2) mapPinchStartDist = 0;
+  if (e.touches.length === 0) onMapPanEnd();
+});
 
 function onAerialWheel(e) {
   e.preventDefault();
@@ -1395,19 +1418,23 @@ const MAP_MIN_ZOOM = 1;
 const MAP_MAX_ZOOM = 5;
 function applyMapZoomPan() {
   const wrap = document.getElementById('map-zoom-wrap');
+  const layer = document.getElementById('map-hotspot-layer');
   if (!wrap) return;
   if (mapZoomLevel <= 1) {
     wrap.style.transform = 'scale(1) translate(0, 0)';
+    if (layer) layer.style.transform = 'scale(1)';
     document.getElementById('map-view').classList.remove('map-pan-active');
     return;
   }
   wrap.style.transform = `scale(${mapZoomLevel}) translate(${-mapPanX / mapZoomLevel}px, ${-mapPanY / mapZoomLevel}px)`;
+  if (layer) layer.style.transform = `scale(${1 / mapZoomLevel})`;
 }
 function resetMapZoom() {
   mapZoomLevel = 1;
   mapPanX = 0;
   mapPanY = 0;
   mapPanActive = false;
+  mapPinchStartDist = 0;
   document.getElementById('map-view').classList.remove('map-pan-active');
   applyMapZoomPan();
 }
