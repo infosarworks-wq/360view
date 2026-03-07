@@ -1136,8 +1136,22 @@ function enterRoom(hotspot, preserveHeading) {
   if (!hotspot || !Array.isArray(hotspot.interior_images) || hotspot.interior_images.length === 0) return;
   currentHotspot = hotspot;
   currentVersion = 1;
-  if (viewMode === 'map') resetMapZoom();
 
+  // When coming from map: reset zoom first so it's visibly applied (fixes phone bug), then enter 360
+  if (viewMode === 'map') {
+    resetMapZoom();
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        doEnterRoomTransition(hotspot, preserveHeading);
+      });
+    });
+    return;
+  }
+
+  doEnterRoomTransition(hotspot, preserveHeading);
+}
+
+function doEnterRoomTransition(hotspot, preserveHeading) {
   fadeTransition(() => {
     viewMode = 'interior';
     document.getElementById('aerial-view').classList.add('hidden');
